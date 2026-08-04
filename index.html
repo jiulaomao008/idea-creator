@@ -548,7 +548,10 @@
   .lp-head{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
   .lp-kicker{ font-family:var(--font-display); font-size:.78rem; color:var(--primary); background:var(--card);
     border:2px solid var(--ink); padding:2px 10px; border-radius:999px; }
-  .lp-head h4{ font-size:1.1rem; margin:0; }
+  .lp-head h4{ font-size:1.1rem; margin:0; flex:1; }
+  .lp-x{ flex:none; width:28px; height:28px; border-radius:50%; border:2px solid var(--ink);
+    background:var(--card); color:var(--ink); font-size:.82rem; cursor:pointer; line-height:1; }
+  .lp-x:hover{ transform:translateY(-1px); }
   .lp-dots{ display:flex; gap:6px; margin-left:auto; }
   .lp-dot{ width:10px; height:10px; border-radius:50%; border:2px solid var(--ink); background:var(--card); }
   .lp-dot.on{ background:var(--primary); }
@@ -1402,8 +1405,18 @@
     return "你是一个「离谱但合理」的 AI 创意点子生成器。请给 1 个有趣、有创意、带点幽默的产品 idea，要求：\n" +
       "1. 结合 AI / 智能设备 / 日常生活小场景；\n" +
       "2. 脑洞要大、可以离谱，但听完让人觉得「好像真有人会用」；\n" +
-      "3. 60 字以内，中文，口语化，不要解释。\n\n" +
+      "3. 60 字以内，中文，口语化，不要解释。\n" +
+      "4. 严格禁止低俗/恶俗内容：不许出现屎尿屁、性暗示、身体隐私、冒犯性玩笑；宁可不搞笑也不要低俗。\n\n" +
+      "可参考的正面风格：把领导画的饼做成地图、给蚊子写遗书、把会议剪成 30 秒高光——无厘头但干净。\n\n" +
       '严格只输出 JSON：{"idea":"完整的产品点子"}';
+  }
+  var DIRTY_WORDS = ["马桶","屎","尿","屁","大便","拉屎","呕吐","肛门","内裤","卫生巾","避孕","性爱","做爱","色情","裸照","裸体","精液","高潮","口交","打炮","约炮","充气娃娃","前列腺"];
+  function isDirty(text){
+    if (!text) return false;
+    for (var i = 0; i < DIRTY_WORDS.length; i++){
+      if (text.indexOf(DIRTY_WORDS[i]) !== -1) return true;
+    }
+    return false;
   }
   var rndBusy = false;
   function randomIdea(){
@@ -1414,23 +1427,34 @@
     var btn = $("randomIdeaBtn");
     btn.disabled = true;
     btn.textContent = "正在想…";
-    callChat(null, buildIdeaPrompt(), 400, 45000).then(function(json){
-      rndBusy = false;
-      btn.disabled = false;
-      btn.textContent = "今天烤什么";
-      var idea = json && json.idea ? String(json.idea).trim() : "";
-      if (idea.length < 4){ toast("大模型没憋出好点子，先用模板的", "warn"); fillRandomIdea(); return; }
-      input.value = idea;
-      input.dispatchEvent(new Event("input"));
-      input.focus();
-      input.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block:"center" });
-    }).catch(function(){
-      rndBusy = false;
-      btn.disabled = false;
-      btn.textContent = "今天烤什么";
-      toast("大模型没接上，先用模板点子", "warn");
-      fillRandomIdea();
-    });
+    var attempts = 0;
+    var tryOnce = function(){
+      callChat(null, buildIdeaPrompt(), 400, 45000).then(function(json){
+        var idea = json && json.idea ? String(json.idea).trim() : "";
+        var bad = idea.length < 4 || isDirty(idea);
+        if (bad && attempts < 1){ attempts++; tryOnce(); return; } // 低俗/太短：再让大模型想一次
+        rndBusy = false;
+        btn.disabled = false;
+        btn.textContent = "今天烤什么";
+        if (bad){
+          toast("大模型又跑偏了，先用模板点子", "warn");
+          fillRandomIdea();
+          return;
+        }
+        input.value = idea;
+        input.dispatchEvent(new Event("input"));
+        input.focus();
+        input.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block:"center" });
+      }).catch(function(){
+        if (attempts < 1){ attempts++; tryOnce(); return; }
+        rndBusy = false;
+        btn.disabled = false;
+        btn.textContent = "今天烤什么";
+        toast("大模型没接上，先用模板点子", "warn");
+        fillRandomIdea();
+      });
+    };
+    tryOnce();
   }
   $("randomIdeaBtn").addEventListener("click", randomIdea);
 
@@ -1637,12 +1661,18 @@
     if (!state.pendingV2) state.v2From = null;
     state.pendingV2 = false;
 
+    /* 新想法开烤：重置落地问诊（下次点开按新 idea 重新出题） */
+    $("landingPanel").hidden = true;
+    landing.qs = []; landing.answers = []; landing.recs = null; landing.step = -1;
+
     input.disabled = true;
     roastBtn.disabled = true;
     roastBtn.textContent = "烤制中…";
     $("report").classList.remove("show");
     $("emptyGrill").style.display = "none";
     $("grillBar").classList.add("show");
+    /* 直接跳到进度条/烤制现场 */
+    $("grillBar").scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block: "start" });
 
     var list = $("roastList");
     list.innerHTML = "";
@@ -2517,7 +2547,7 @@
       ? ' <b>5 个创意优化问题由大模型针对你的想法量身定制</b>（每个想法问得都不一样），每问标注 ✨ 推荐选项（也可以不跟）。'
       : ' 未配置 API 时使用预设题库（配置后即由大模型针对想法定制问题）。';
     panel.innerHTML =
-      '<div class="lp-head"><span class="lp-kicker">落地问诊</span><h4>先打磨创意，再定方向</h4></div>' +
+      '<div class="lp-head"><span class="lp-kicker">落地问诊</span><h4>先打磨创意，再定方向</h4><button type="button" class="lp-x" aria-label="收起">✕</button></div>' +
       '<div class="lp-summary"><p><b>五位评委的共识：</b>你的「<span class="hl">' + w.name + '</span>」维度最弱（' + w.score + '/100）。' +
       escHtml(state.advice[0] || "建议先聚焦一个核心场景，砍掉多余功能") + '</p></div>' +
       '<p class="lp-tip">问诊分两步：先 <b>' + ideaCount + '</b> 轮<b>创意优化</b>把点子本身打磨到位，再 <b>' + landCount + '</b> 轮<b>落地决策</b>把「给谁用、在哪用」定下来。' + recNote + '选完就生成对应版本的落地提示词。</p>' +
@@ -2543,7 +2573,7 @@
     }).join("");
     var divider = (q.phase === "landing" && phaseIdx === 0) ? '<div class="lp-divider">✅ 创意打磨完成 · 进入落地优化</div>' : "";
     panel.innerHTML =
-      '<div class="lp-head"><span class="lp-kicker">' + phaseName + '</span><h4>第 ' + (phaseIdx+1) + '/' + phaseTotal + ' 问 · ' + q.label + '</h4><div class="lp-dots">' + dots + '</div></div>' +
+      '<div class="lp-head"><span class="lp-kicker">' + phaseName + '</span><h4>第 ' + (phaseIdx+1) + '/' + phaseTotal + ' 问 · ' + q.label + '</h4><button type="button" class="lp-x" aria-label="收起">✕</button><div class="lp-dots">' + dots + '</div></div>' +
       divider +
       '<p class="lp-q">' + escHtml(q.q) + '</p>' +
       '<div class="lp-opts">' + opts + '</div>' +
@@ -2554,7 +2584,7 @@
     var ideaCount = 0, landCount = 0;
     landing.answers.forEach(function(x){ if (x.phase === "idea") ideaCount++; else landCount++; });
     panel.innerHTML =
-      '<div class="lp-head"><span class="lp-kicker">问诊完成</span><h4>✅ 落地提示词已出炉</h4></div>' +
+      '<div class="lp-head"><span class="lp-kicker">问诊完成</span><h4>✅ 落地提示词已出炉</h4><button type="button" class="lp-x" aria-label="收起">✕</button></div>' +
       '<p class="lp-tip">把这整段复制给 AI 编程 / 设计工具（Cursor、v0、Bolt、即梦…）即可开烤 MVP。已吸收吐槽 + ' + ideaCount + ' 轮创意优化 + ' + landCount + ' 轮落地决策。</p>' +
       '<div class="landing-box"><pre id="lpResultText">' + escHtml(prompt) + '</pre></div>' +
       '<div class="modal-actions">' +
@@ -2654,7 +2684,11 @@
       var r2 = $("landingPanel").querySelector("#lpResultText");
       if (r2) downloadText(r2.textContent, "idea-landing-prompt.txt");
     }
-    else if (t.id === "lpClose"){ $("landingPanel").hidden = true; landing.open = false; landing.qs = []; landing.answers = []; }
+    else if (t.id === "lpClose" || (t.classList && t.classList.contains("lp-x"))){
+      $("landingPanel").hidden = true;
+      landing.open = false;
+      // 只收起，不清进度；新想法开烤（startRoast）时才会重置
+    }
   });
 
   /* ============ 分享卡 ============ */
