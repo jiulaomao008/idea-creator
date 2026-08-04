@@ -2822,12 +2822,12 @@
     /* 综合存活分 */
     g.fillStyle = "#FF5A2A";
     g.font = "400 180px 'ZCOOL KuaiLe','Noto Sans SC',sans-serif";
-    g.fillText(String(state.score), W / 2, 560);
+    g.fillText(String(state.score), W / 2, 575);
     g.fillStyle = "rgba(36,26,16,.55)";
     g.font = "400 42px 'Noto Sans SC',sans-serif";
-    g.fillText("/ 100 · 综合存活分", W / 2, 612);
+    g.fillText("/ 100 · 综合存活分", W / 2, 627);
 
-    var cx = W / 2, cy = 885, R = 192, n = state.dims.length;
+    var cx = W / 2, cy = 895, R = 192, n = state.dims.length;
     g.strokeStyle = "rgba(36,26,16,.2)"; g.lineWidth = 3;
     [0.33, 0.66, 1].forEach(function(k){
       g.beginPath();
@@ -2867,18 +2867,18 @@
     g.textAlign = "center";
 
     g.fillStyle = "rgba(255,201,60,.35)";
-    roundRect(g, 90, 1150, W - 180, 170, 22); g.fill();
+    roundRect(g, 90, 1180, W - 180, 140, 22); g.fill();
     g.strokeStyle = "#241A10"; g.lineWidth = 6;
-    roundRect(g, 90, 1150, W - 180, 170, 22); g.stroke();
+    roundRect(g, 90, 1180, W - 180, 140, 22); g.stroke();
     g.fillStyle = "#241A10";
     g.font = "400 33px 'Noto Sans SC',sans-serif";
     g.textAlign = "left";
-    wrapText(g, "主厨判词：" + (state.verdict || state.tier.verdict), 130, 1208, W - 260, 41, 33, 3);
+    wrapText(g, "主厨判词：" + (state.verdict || state.tier.verdict), 130, 1225, W - 260, 41, 33, 3);
     g.textAlign = "center";
 
     g.fillStyle = "rgba(36,26,16,.55)";
     g.font = "400 28px 'Noto Sans SC',sans-serif";
-    g.fillText("本报告不构成任何投资建议，但构成谈资 · 由 idea烤串机现烤出品", W / 2, 1345);
+    g.fillText("本报告不构成任何投资建议，但构成谈资 · 由 idea烤串机现烤出品", W / 2, 1375);
 
     try{
       var link = document.createElement("a");
