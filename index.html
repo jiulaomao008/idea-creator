@@ -2853,12 +2853,14 @@
     g.textAlign = "center";
 
     g.fillStyle = "rgba(255,201,60,.35)";
-    roundRect(g, 90, 1165, W - 180, 120, 22); g.fill();
+    roundRect(g, 90, 1150, W - 180, 150, 22); g.fill();
     g.strokeStyle = "#241A10"; g.lineWidth = 6;
-    roundRect(g, 90, 1165, W - 180, 120, 22); g.stroke();
+    roundRect(g, 90, 1150, W - 180, 150, 22); g.stroke();
     g.fillStyle = "#241A10";
-    g.font = "400 36px 'Noto Sans SC',sans-serif";
-    wrapText(g, "主厨判词：" + (state.verdict || state.tier.verdict), 130, 1225, W - 260, 46, 36);
+    g.font = "400 34px 'Noto Sans SC',sans-serif";
+    g.textAlign = "left";
+    wrapText(g, "主厨判词：" + (state.verdict || state.tier.verdict), 130, 1210, W - 260, 44, 34);
+    g.textAlign = "center";
 
     g.fillStyle = "rgba(36,26,16,.55)";
     g.font = "400 30px 'Noto Sans SC',sans-serif";
