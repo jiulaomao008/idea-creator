@@ -1,0 +1,2773 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="idea烤串机：输入你的产品想法，五位AI评委轮番吐槽，现烤一份存活评估报告。支持接入真实大模型 API 现烤，也内置纯前端演示引擎。一个展示提示词工程与AI产品思维的概念实验。">
+<title>idea烤串机 · 五位 AI 评委现烤你的产品想法</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  /* ---------- 种子 token（外观预设通过这一层切换） ---------- */
+  :root{
+    --seed-bg:      #FFF6E6;
+    --seed-fg:      #241A10;
+    --seed-primary: #FF5A2A;   /* 火焰橙红 */
+    --seed-accent:  #FFC93C;   /* 柠檬黄 */
+    --seed-surface: #FFFDF7;
+    --seed-radius:  18px;
+
+    /* 五位评委专属色 */
+    --c-investor:  #2B59D9;
+    --c-user:      #FFB800;
+    --c-engineer:  #E23D3D;
+    --c-legal:     #8A4FD3;
+    --c-rival:     #1FA97A;
+
+    /* 由种子派生 */
+    --ink:        var(--seed-fg);
+    --paper:      var(--seed-bg);
+    --card:       var(--seed-surface);
+    --ink-soft:   color-mix(in srgb, var(--seed-fg) 62%, var(--seed-bg));
+    --ink-faint:  color-mix(in srgb, var(--seed-fg) 34%, transparent);
+    --line:       color-mix(in srgb, var(--seed-fg) 16%, transparent);
+    --primary:    var(--seed-primary);
+    --primary-deep: color-mix(in srgb, var(--seed-primary) 78%, var(--seed-fg));
+    --accent:     var(--seed-accent);
+    --on-accent:  color-mix(in srgb, var(--seed-accent) 25%, #000);
+    --accent-soft: color-mix(in srgb, var(--seed-accent) 30%, var(--seed-surface));
+    --halftone:   color-mix(in srgb, var(--seed-fg) 7%, transparent);
+    --ink-w:      3px;
+    --shadow-hard: 7px 7px 0 color-mix(in srgb, var(--seed-fg) 88%, transparent);
+    --shadow-hard-sm: 4px 4px 0 color-mix(in srgb, var(--seed-fg) 88%, transparent);
+
+    --font-display: "ZCOOL KuaiLe", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    --font-body: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  html{ scroll-behavior:smooth; }
+  body{
+    font-family:var(--font-body);
+    background:var(--paper);
+    background-image:radial-gradient(var(--halftone) 1.5px, transparent 1.5px);
+    background-size:22px 22px;
+    color:var(--ink);
+    line-height:1.7;
+    overflow-x:hidden;
+  }
+  ::selection{ background:var(--accent); color:var(--ink); }
+
+  .wrap{ max-width:1080px; margin:0 auto; padding:0 24px; }
+
+  /* ---------- 通用漫画元件 ---------- */
+  .card{
+    background:var(--card);
+    border:var(--ink-w) solid var(--ink);
+    border-radius:var(--seed-radius);
+    box-shadow:var(--shadow-hard);
+  }
+  .btn{
+    display:inline-flex; align-items:center; gap:10px;
+    font-family:var(--font-display); font-size:1.15rem; letter-spacing:.06em;
+    color:var(--ink); background:var(--accent);
+    border:var(--ink-w) solid var(--ink); border-radius:14px;
+    padding:14px 30px; cursor:pointer; text-decoration:none;
+    box-shadow:var(--shadow-hard-sm);
+    transition:transform .12s ease, box-shadow .12s ease, background .2s ease;
+  }
+  .btn:hover{ transform:translate(-2px,-2px); box-shadow:6px 6px 0 color-mix(in srgb, var(--seed-fg) 88%, transparent); }
+  .btn:active{ transform:translate(2px,2px); box-shadow:1px 1px 0 color-mix(in srgb, var(--seed-fg) 88%, transparent); }
+  .btn:focus-visible, .chip:focus-visible, textarea:focus-visible, a:focus-visible{
+    outline:3px dashed var(--primary); outline-offset:3px;
+  }
+  .btn-primary{ background:var(--primary); color:#fff; }
+  .btn-ghost{ background:var(--card); }
+  .btn[disabled]{ opacity:.45; cursor:not-allowed; transform:none; box-shadow:var(--shadow-hard-sm); }
+
+  .kicker{
+    display:inline-block; font-family:var(--font-display);
+    background:var(--ink); color:var(--paper);
+    padding:4px 16px; border-radius:999px; font-size:.95rem; letter-spacing:.14em;
+    transform:rotate(-1.5deg);
+  }
+  h1,h2,h3{ font-family:var(--font-display); font-weight:400; line-height:1.25; }
+
+  .tape{
+    position:absolute; width:96px; height:26px;
+    background:color-mix(in srgb, var(--accent) 82%, transparent);
+    border:2px solid color-mix(in srgb, var(--seed-fg) 35%, transparent);
+    transform:rotate(-6deg); top:-13px; left:34px; border-radius:2px;
+  }
+
+  /* ---------- 顶栏 ---------- */
+  .topbar{
+    position:sticky; top:0; z-index:50;
+    background:var(--paper);
+    border-bottom:var(--ink-w) solid var(--ink);
+  }
+  .topbar-inner{ display:flex; align-items:center; justify-content:space-between; padding:14px 0; }
+  .logo{ display:flex; align-items:center; gap:10px; font-family:var(--font-display); font-size:1.35rem; color:var(--ink); text-decoration:none; }
+  .logo svg{ width:34px; height:34px; }
+  .nav{ display:flex; gap:22px; }
+  .nav a{ font-family:var(--font-display); color:var(--ink); text-decoration:none; font-size:1.02rem; padding:4px 2px; border-bottom:3px solid transparent; }
+  .nav a:hover{ border-bottom-color:var(--primary); }
+
+  /* ---------- Hero ---------- */
+  .hero{ padding:72px 0 56px; text-align:center; position:relative; }
+  .hero-badges{ display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-bottom:26px; }
+  .badge{
+    font-size:.85rem; font-weight:700; padding:5px 14px; border-radius:999px;
+    border:2.5px solid var(--ink); background:var(--card); box-shadow:3px 3px 0 color-mix(in srgb, var(--seed-fg) 85%, transparent);
+  }
+  .badge.b1{ background:var(--c-investor); color:#fff; transform:rotate(-2deg); }
+  .badge.b2{ background:var(--accent); color:var(--on-accent); transform:rotate(1.5deg); }
+  .badge.b3{ background:var(--c-rival); color:#fff; transform:rotate(-1deg); }
+  .badge.b4{ background:var(--c-legal); color:#fff; transform:rotate(2deg); }
+  .badge.b5{ background:var(--c-engineer); color:#fff; transform:rotate(-1.5deg); }
+
+  .hero h1{ font-size:clamp(2.9rem, 7vw, 4.6rem); letter-spacing:.04em; }
+  .hero h1 .hot{ color:var(--primary); position:relative; white-space:nowrap; }
+  .hero h1 .hot::after{
+    content:""; position:absolute; left:-4%; right:-4%; bottom:8%; height:32%;
+    background:var(--accent); z-index:-1; border-radius:6px; transform:rotate(-1deg);
+  }
+  .hero .tagline{ font-size:clamp(1.05rem, 2.2vw, 1.3rem); color:var(--ink-soft); margin:18px auto 0; max-width:640px; }
+  .hero .tagline strong{ color:var(--ink); }
+
+  .idea-box{ margin:42px auto 0; max-width:720px; text-align:left; position:relative; }
+  .idea-box .tape{ left:auto; right:40px; transform:rotate(5deg); }
+  .idea-box-inner{ padding:26px 26px 22px; }
+  .idea-label{ font-family:var(--font-display); font-size:1.1rem; display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+  textarea#ideaInput{
+    width:100%; min-height:96px; resize:vertical;
+    font-family:var(--font-body); font-size:1.05rem; line-height:1.7;
+    color:var(--ink); background:var(--paper);
+    border:var(--ink-w) solid var(--ink); border-radius:calc(var(--seed-radius) - 6px);
+    padding:14px 16px;
+  }
+  textarea#ideaInput::placeholder{ color:var(--ink-faint); }
+  .idea-foot{ display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:16px; flex-wrap:wrap; }
+  .char-count{ font-size:.85rem; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+  .idea-error{ display:none; color:var(--c-engineer); font-weight:700; font-size:.9rem; margin-top:8px; }
+  .idea-error.show{ display:block; }
+  .idea-box.shake{ animation:shake .4s ease; }
+  @keyframes shake{ 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }
+
+  .examples{ margin-top:26px; text-align:center; }
+  .examples p{ font-size:.92rem; color:var(--ink-soft); margin-bottom:12px; }
+  .chips{ display:flex; flex-wrap:wrap; gap:10px; justify-content:center; }
+  .chip{
+    font-family:var(--font-body); font-size:.9rem; font-weight:500;
+    background:var(--card); color:var(--ink);
+    border:2.5px solid var(--ink); border-radius:999px; padding:8px 16px; cursor:pointer;
+    box-shadow:3px 3px 0 color-mix(in srgb, var(--seed-fg) 80%, transparent);
+    transition:transform .12s ease, background .2s ease;
+  }
+  .chip:hover{ transform:translate(-2px,-2px) rotate(-1deg); background:var(--accent-soft); }
+  .chip:active{ transform:translate(1px,1px); }
+
+  .demo-note{ margin:30px auto 0; max-width:640px; font-size:.82rem; color:var(--ink-soft);
+    border:2px dashed var(--ink-faint); border-radius:12px; padding:8px 16px; }
+
+  /* ---------- 跑马灯 ---------- */
+  .ticker{ border-top:var(--ink-w) solid var(--ink); border-bottom:var(--ink-w) solid var(--ink);
+    background:var(--primary); color:#fff; overflow:hidden; }
+  .ticker-track{ display:flex; width:max-content; animation:ticker 26s linear infinite; }
+  .ticker span{ font-family:var(--font-display); font-size:1.05rem; letter-spacing:.2em; padding:10px 0; white-space:nowrap; }
+  .ticker span i{ font-style:normal; margin:0 22px; opacity:.7; }
+  @keyframes ticker{ from{transform:translateX(0)} to{transform:translateX(-50%)} }
+
+  /* ---------- 烤制现场 ---------- */
+  .stage{ padding:76px 0 30px; }
+  .section-head{ text-align:center; margin-bottom:40px; }
+  .section-head h2{ font-size:clamp(1.9rem, 4vw, 2.6rem); margin-top:14px; }
+  .section-head p{ color:var(--ink-soft); margin-top:8px; }
+
+  .grill-bar{ display:none; align-items:center; gap:16px; margin-bottom:30px; padding:16px 22px; }
+  .grill-bar.show{ display:flex; }
+  .grill-bar .flame{ width:34px; height:34px; flex:none; }
+  .grill-bar .flame path.outer{ animation:flick 0.6s ease-in-out infinite alternate; transform-origin:50% 100%; }
+  @keyframes flick{ from{transform:scaleY(1) rotate(-2deg)} to{transform:scaleY(1.08) rotate(2deg)} }
+  .grill-track{ flex:1; height:20px; border:var(--ink-w) solid var(--ink); border-radius:999px; background:var(--paper); overflow:hidden; }
+  .grill-fill{ height:100%; width:0%; background:repeating-linear-gradient(45deg, var(--primary) 0 12px, var(--accent) 12px 24px); transition:width .5s ease; }
+  .grill-status{ font-family:var(--font-display); font-size:1rem; white-space:nowrap; min-width:120px; text-align:right; }
+
+  .empty-grill{ text-align:center; padding:60px 24px; border:3px dashed var(--ink-faint); border-radius:var(--seed-radius); box-shadow:none; background:transparent; color:var(--ink-soft); }
+  .empty-grill svg{ width:120px; height:auto; margin-bottom:16px; }
+  .empty-grill p{ font-family:var(--font-display); font-size:1.15rem; }
+
+  .roast-list{ display:flex; flex-direction:column; gap:28px; }
+  .role-block{ display:flex; gap:18px; align-items:flex-start; opacity:0; transform:translateY(14px); }
+  .role-block.on{ opacity:1; transform:none; transition:opacity .35s ease, transform .35s ease; }
+  .role-avatar{ flex:none; width:78px; text-align:center; }
+  .role-avatar svg{ width:74px; height:74px; }
+  .role-tag{
+    margin-top:8px; display:inline-block; font-family:var(--font-display); font-size:.86rem;
+    padding:3px 10px; border-radius:8px; border:2.5px solid var(--ink);
+    box-shadow:2px 2px 0 color-mix(in srgb, var(--seed-fg) 80%, transparent);
+    white-space:nowrap;
+  }
+  .bubble{
+    position:relative; flex:1; padding:20px 24px;
+    background:var(--card); border:var(--ink-w) solid var(--ink);
+    border-radius:var(--seed-radius); box-shadow:var(--shadow-hard-sm);
+    font-size:1.04rem;
+  }
+  .bubble::before{
+    content:""; position:absolute; left:-16px; top:26px;
+    width:18px; height:18px; background:var(--card);
+    border-left:var(--ink-w) solid var(--ink); border-bottom:var(--ink-w) solid var(--ink);
+    transform:rotate(45deg);
+  }
+  .bubble .who{ font-family:var(--font-display); font-size:.92rem; color:var(--ink-soft); margin-bottom:6px; }
+  .bubble .txt{ min-height:1.7em; }
+  .caret{ display:inline-block; width:10px; height:1.15em; background:var(--primary); vertical-align:-3px; margin-left:2px; animation:blink .7s steps(1) infinite; }
+  @keyframes blink{ 50%{opacity:0} }
+
+  .t-investor .role-tag{ background:var(--c-investor); color:#fff; }
+  .t-user .role-tag{ background:var(--c-user); }
+  .t-engineer .role-tag{ background:var(--c-engineer); color:#fff; }
+  .t-legal .role-tag{ background:var(--c-legal); color:#fff; }
+  .t-rival .role-tag{ background:var(--c-rival); color:#fff; }
+  .t-investor .bubble{ border-color:var(--c-investor); }
+  .t-user .bubble{ border-color:color-mix(in srgb, var(--c-user) 80%, var(--ink)); }
+  .t-engineer .bubble{ border-color:var(--c-engineer); }
+  .t-legal .bubble{ border-color:var(--c-legal); }
+  .t-rival .bubble{ border-color:var(--c-rival); }
+
+  /* ---------- 存活评估报告 ---------- */
+  .verdict{ padding:70px 0; }
+  .report{ position:relative; padding:44px 40px 40px; display:none; }
+  .report.show{ display:block; animation:pop-in .45s cubic-bezier(.2,1.4,.4,1); }
+  @keyframes pop-in{ from{ opacity:0; transform:scale(.92) rotate(-1deg);} to{ opacity:1; transform:none; } }
+  .report-inner{ border:3px dashed var(--ink-faint); border-radius:calc(var(--seed-radius) - 6px); padding:34px 30px; }
+  .report-head{ text-align:center; margin-bottom:26px; }
+  .report-head .cert-title{ font-size:2rem; letter-spacing:.5em; text-indent:.5em; }
+  .report-head .cert-sub{ font-size:.85rem; color:var(--ink-soft); margin-top:6px; letter-spacing:.1em; }
+  .report-grid{ display:grid; grid-template-columns:1fr 1.1fr; gap:36px; align-items:center; }
+  .score-side{ text-align:center; position:relative; }
+  .score-num{ font-family:var(--font-display); font-size:5.2rem; line-height:1; color:var(--primary); }
+  .score-num small{ font-size:1.4rem; color:var(--ink-soft); }
+  .score-caption{ margin-top:6px; color:var(--ink-soft); font-size:.92rem; }
+  .stamp{
+    position:absolute; top:-18px; right:2%;
+    width:118px; height:118px; border-radius:50%;
+    border:4px solid var(--c-engineer); color:var(--c-engineer);
+    display:flex; align-items:center; justify-content:center; text-align:center;
+    font-family:var(--font-display); font-size:1.5rem; line-height:1.25; letter-spacing:.1em;
+    transform:rotate(12deg); background:color-mix(in srgb, var(--seed-surface) 60%, transparent);
+    box-shadow:inset 0 0 0 3px color-mix(in srgb, var(--c-engineer) 25%, transparent);
+  }
+  .stamp.slam{ animation:slam .5s cubic-bezier(.2,1.6,.4,1); }
+  @keyframes slam{ 0%{ transform:rotate(12deg) scale(2.4); opacity:0; } 100%{ transform:rotate(12deg) scale(1); opacity:1; } }
+  .radar-side svg{ width:100%; height:auto; display:block; }
+  .verdict-line{ margin-top:30px; padding:18px 22px; background:var(--accent-soft); border:var(--ink-w) solid var(--ink); border-radius:calc(var(--seed-radius) - 6px); font-size:1.08rem; }
+  .verdict-line b{ font-family:var(--font-display); font-weight:400; }
+  .advice-list{ margin-top:22px; display:flex; flex-direction:column; gap:12px; }
+  .advice-item{ display:flex; gap:12px; align-items:flex-start; padding:14px 18px; border:2.5px solid var(--ink); border-radius:calc(var(--seed-radius) - 8px); background:var(--paper); }
+  .advice-item .no{ flex:none; font-family:var(--font-display); width:30px; height:30px; border-radius:50%; background:var(--ink); color:var(--paper); display:flex; align-items:center; justify-content:center; font-size:.95rem; }
+  .report-actions{ margin-top:30px; display:flex; gap:14px; justify-content:center; flex-wrap:wrap; }
+  .report-foot{ margin-top:24px; text-align:center; font-size:.8rem; color:var(--ink-soft); letter-spacing:.08em; }
+
+  /* ---------- Prompt 厨房 ---------- */
+  .kitchen{ padding:70px 0; background:var(--ink); color:var(--paper);
+    background-image:radial-gradient(color-mix(in srgb, var(--seed-bg) 6%, transparent) 1.5px, transparent 1.5px); background-size:22px 22px; }
+  .kitchen .section-head h2{ color:var(--paper); }
+  .kitchen .section-head p{ color:color-mix(in srgb, var(--paper) 68%, transparent); }
+  .kitchen .kicker{ background:var(--accent); color:var(--on-accent); }
+  .prompt-grid{ display:grid; grid-template-columns:repeat(2, 1fr); gap:26px; }
+  .prompt-card{ background:var(--card); color:var(--ink); border:var(--ink-w) solid var(--ink); border-radius:var(--seed-radius); box-shadow:7px 7px 0 color-mix(in srgb, var(--seed-accent) 75%, transparent); padding:24px; display:flex; flex-direction:column; gap:14px; }
+  .prompt-card.wide{ grid-column:1 / -1; }
+  .prompt-card h3{ display:flex; align-items:center; gap:10px; font-size:1.25rem; }
+  .role-dot{ width:14px; height:14px; border-radius:50%; border:2.5px solid var(--ink); flex:none; }
+  .prompt-code{
+    font-family:ui-monospace, "SFMono-Regular", Consolas, "Courier New", monospace;
+    font-size:.84rem; line-height:1.75; white-space:pre-wrap; word-break:break-word;
+    background:var(--paper); border:2.5px solid var(--ink); border-radius:calc(var(--seed-radius) - 8px);
+    padding:14px 16px; color:var(--ink);
+  }
+  .prompt-note{ font-size:.92rem; color:var(--ink-soft); border-left:4px solid var(--accent); padding-left:12px; }
+  .prompt-note b{ color:var(--ink); }
+
+  /* ---------- 关于 ---------- */
+  .about{ padding:80px 0 90px; }
+  .about-card{ padding:40px; display:grid; grid-template-columns:auto 1fr; gap:34px; align-items:center; position:relative; }
+  .chef-svg{ width:150px; height:150px; }
+  .about-text h2{ font-size:1.9rem; margin-bottom:12px; }
+  .about-text p{ color:var(--ink-soft); max-width:640px; }
+  .about-text p strong{ color:var(--ink); }
+  .about-links{ margin-top:20px; display:flex; gap:12px; flex-wrap:wrap; }
+  .about-links a{
+    font-family:var(--font-display); font-size:.98rem; text-decoration:none; color:var(--ink);
+    border:2.5px solid var(--ink); background:var(--paper); border-radius:12px; padding:9px 18px;
+    box-shadow:3px 3px 0 color-mix(in srgb, var(--seed-fg) 80%, transparent);
+    transition:transform .12s ease, background .2s ease;
+  }
+  .about-links a:hover{ transform:translate(-2px,-2px); background:var(--accent-soft); }
+  .about-contact{ margin-top:16px; font-size:.9rem; color:var(--ink-soft); letter-spacing:.02em; }
+
+  footer{ border-top:var(--ink-w) solid var(--ink); padding:26px 0 34px; text-align:center; color:var(--ink-soft); font-size:.88rem; }
+  footer .foot-logo{ font-family:var(--font-display); font-size:1.1rem; color:var(--ink); margin-bottom:6px; }
+
+  /* ---------- 火候选择 ---------- */
+  .heat-selector{ display:flex; align-items:center; gap:10px; margin:18px auto 0; max-width:720px; flex-wrap:wrap; justify-content:center; }
+  .heat-label{ font-family:var(--font-display); font-size:.95rem; color:var(--ink-soft); }
+  .heat-btn{
+    font-family:var(--font-display); font-size:.9rem; padding:6px 16px; cursor:pointer;
+    border:2.5px solid var(--ink); border-radius:999px; background:var(--paper); color:var(--ink);
+    box-shadow:2.5px 2.5px 0 color-mix(in srgb, var(--seed-fg) 78%, transparent);
+    transition:transform .12s ease, background .2s ease;
+  }
+  .heat-btn:hover{ transform:translate(-1px,-1px); }
+  .heat-btn.active{ background:var(--primary); color:#fff; box-shadow:2.5px 2.5px 0 var(--ink); }
+  .heat-btn[data-heat="gentle"].active{ background:#1FA97A; }
+  .heat-btn[data-heat="hell"].active{ background:#E23D3D; }
+
+  /* ---------- 换一批 ---------- */
+  .examples-head{ display:flex; align-items:center; justify-content:center; gap:14px; flex-wrap:wrap; margin-bottom:12px; }
+  .examples-head p{ margin-bottom:0; }
+  .refresh-btn{
+    display:inline-flex; align-items:center; gap:6px;
+    font-family:var(--font-display); font-size:.88rem; color:var(--ink);
+    background:var(--accent); border:2.5px solid var(--ink); border-radius:999px;
+    padding:6px 16px; cursor:pointer; box-shadow:2.5px 2.5px 0 color-mix(in srgb, var(--seed-fg) 80%, transparent);
+    transition:transform .12s ease;
+  }
+  .refresh-btn:hover{ transform:translate(-1px,-1px) rotate(-1deg); }
+  .refresh-btn:active{ transform:translate(1px,1px); }
+  .refresh-btn svg{ width:15px; height:15px; }
+  .refresh-btn.spin svg{ animation:spin .5s ease; }
+  @keyframes spin{ from{ transform:rotate(0); } to{ transform:rotate(360deg); } }
+  .chip.pop{ animation:pop .35s cubic-bezier(.2,1.4,.4,1) both; }
+  @keyframes pop{ from{ opacity:0; transform:translateY(6px) scale(.9); } to{ opacity:1; transform:none; } }
+
+  /* ---------- 顶栏模式指示 & 档案按钮 ---------- */
+  .nav{ align-items:center; }
+  .mode-pill{
+    font-family:var(--font-display); font-size:.86rem; padding:5px 14px; border-radius:999px;
+    border:2.5px solid var(--ink); cursor:pointer; box-shadow:2.5px 2.5px 0 color-mix(in srgb, var(--seed-fg) 80%, transparent);
+    background:var(--accent-soft); color:var(--ink); transition:transform .12s ease;
+  }
+  .mode-pill:hover{ transform:translate(-1px,-1px); }
+  .mode-pill.online{ background:#1FA97A; color:#fff; }
+  .mode-pill svg{ width:13px; height:13px; vertical-align:-2px; margin-right:4px; }
+  .nav-hbtn{
+    font-family:var(--font-display); font-size:.86rem; padding:5px 14px; border-radius:999px;
+    border:2.5px solid var(--ink); background:var(--paper); color:var(--ink); cursor:pointer;
+    box-shadow:2.5px 2.5px 0 color-mix(in srgb, var(--seed-fg) 80%, transparent); transition:transform .12s ease;
+  }
+  .nav-hbtn:hover{ transform:translate(-1px,-1px); background:var(--accent-soft); }
+
+  /* ---------- 弹窗 ---------- */
+  .modal-mask{
+    position:fixed; inset:0; z-index:100; display:none;
+    background:rgba(36,26,16,.55); backdrop-filter:blur(2px);
+    align-items:flex-start; justify-content:center; padding:60px 16px; overflow-y:auto;
+  }
+  .modal-mask.show{ display:flex; animation:fadein .2s ease; }
+  @keyframes fadein{ from{ opacity:0; } to{ opacity:1; } }
+  .modal{
+    position:relative; width:100%; max-width:560px; background:var(--card);
+    border:var(--ink-w) solid var(--ink); border-radius:var(--seed-radius);
+    box-shadow:var(--shadow-hard); padding:30px 28px; animation:pop-in .3s cubic-bezier(.2,1.4,.4,1);
+  }
+  .modal-close{
+    position:absolute; top:14px; right:14px; width:36px; height:36px; border-radius:50%;
+    border:2.5px solid var(--ink); background:var(--paper); font-family:var(--font-display);
+    font-size:1.1rem; cursor:pointer; line-height:1; color:var(--ink);
+  }
+  .modal-close:hover{ background:var(--accent-soft); }
+  .modal h3{ font-size:1.5rem; margin-bottom:6px; }
+  .modal .modal-sub{ font-size:.9rem; color:var(--ink-soft); margin-bottom:20px; }
+  .field{ margin-bottom:16px; }
+  .field label{ display:block; font-family:var(--font-display); font-size:.95rem; margin-bottom:6px; }
+  .field input{
+    width:100%; font-family:var(--font-body); font-size:.98rem; color:var(--ink);
+    background:var(--paper); border:2.5px solid var(--ink); border-radius:10px; padding:10px 12px;
+  }
+  .field input::placeholder{ color:var(--ink-faint); }
+  .field .hint{ font-size:.8rem; color:var(--ink-soft); margin-top:5px; }
+  .modal-actions{ display:flex; gap:12px; margin-top:20px; flex-wrap:wrap; }
+  .modal-actions .btn{ font-size:.95rem; padding:10px 20px; }
+  .preset-row{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .preset-btn{
+    font-size:.78rem; padding:4px 12px; border-radius:999px; border:2px solid var(--ink);
+    background:var(--paper); cursor:pointer; color:var(--ink-soft);
+  }
+  .preset-btn:hover{ background:var(--accent-soft); color:var(--ink); }
+
+  /* ---------- 烤串档案 ---------- */
+  .history-list{ display:flex; flex-direction:column; gap:12px; max-height:420px; overflow-y:auto; padding-right:4px; }
+  .history-item{
+    border:2.5px solid var(--ink); border-radius:calc(var(--seed-radius) - 8px);
+    background:var(--paper); padding:14px 16px; display:flex; align-items:center; gap:14px;
+  }
+  .history-item .h-score{
+    flex:none; width:62px; height:62px; border-radius:50%; border:3px solid var(--ink);
+    background:var(--card); display:flex; align-items:center; justify-content:center;
+    font-family:var(--font-display); font-size:1.1rem; color:var(--primary);
+  }
+  .history-item .h-main{ flex:1; min-width:0; }
+  .history-item .h-idea{ font-weight:700; font-size:.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .history-item .h-meta{ font-size:.78rem; color:var(--ink-soft); margin-top:3px; }
+  .history-item .h-actions{ display:flex; gap:6px; flex:none; }
+  .history-item .h-actions button{
+    font-family:var(--font-display); font-size:.78rem; padding:5px 10px; border-radius:8px;
+    border:2px solid var(--ink); background:var(--card); cursor:pointer; color:var(--ink);
+  }
+  .history-item .h-actions button:hover{ background:var(--accent-soft); }
+  .history-empty{ text-align:center; color:var(--ink-soft); padding:36px 0; font-size:.95rem; }
+
+  /* ---------- toast ---------- */
+  .toast{
+    position:fixed; left:50%; bottom:34px; transform:translateX(-50%) translateY(20px);
+    z-index:120; max-width:88vw; padding:12px 22px; border-radius:14px;
+    background:var(--ink); color:var(--paper); font-size:.92rem; font-weight:500;
+    border:3px solid var(--accent); box-shadow:var(--shadow-hard-sm);
+    opacity:0; pointer-events:none; transition:opacity .25s ease, transform .25s ease;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  .toast.warn{ border-color:var(--c-engineer); }
+  .toast.ok{ border-color:#1FA97A; }
+
+  /* ---------- 回炉对比条 ---------- */
+  .v2-compare{ display:none; margin:16px 0 4px; padding:12px 16px; border-radius:12px;
+    border:2.5px solid var(--ink); background:var(--accent-soft); font-size:.95rem; align-items:center; gap:12px; flex-wrap:wrap; }
+  .v2-compare.show{ display:flex; }
+  .v2-compare .v2-label{ font-family:var(--font-display); font-size:1rem; }
+  .v2-compare .v2-flow{ font-weight:700; }
+  .v2-compare .v2-delta{ font-family:var(--font-display); font-size:1.15rem; margin-left:auto; }
+  .v2-compare .v2-delta.up{ color:var(--primary); }
+  .v2-compare .v2-delta.down{ color:#1FA97A; }
+
+  /* ---------- 弹窗小号 & 子标题 ---------- */
+  .modal-sm{ max-width:440px; }
+  .sub-title{ font-family:var(--font-display); font-size:1rem; margin:18px 0 10px; }
+
+  /* ---------- 战绩统计 ---------- */
+  .stats-cards{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .stat-card{ border:2.5px solid var(--ink); border-radius:12px; background:var(--paper); padding:12px 8px; text-align:center; }
+  .stat-card .s-num{ font-family:var(--font-display); font-size:1.5rem; color:var(--primary); }
+  .stat-card .s-label{ font-size:.75rem; color:var(--ink-soft); margin-top:2px; }
+  .tier-bars{ display:flex; flex-direction:column; gap:7px; }
+  .tier-bar{ display:flex; align-items:center; gap:10px; font-size:.8rem; }
+  .tier-bar .t-name{ flex:none; width:52px; text-align:right; }
+  .tier-bar .t-track{ flex:1; height:16px; border:2px solid var(--ink); border-radius:999px; background:var(--paper); overflow:hidden; }
+  .tier-bar .t-fill{ height:100%; border-radius:999px; background:var(--primary); width:0; transition:width .5s ease; }
+  .tier-bar .t-num{ flex:none; width:26px; color:var(--ink-soft); font-size:.75rem; }
+
+  /* ---------- 烤榜 podium ---------- */
+  .podium{ display:flex; gap:10px; align-items:flex-end; }
+  .podium .p-item{ flex:1; border:2.5px solid var(--ink); border-radius:12px; background:var(--paper); padding:10px 8px; text-align:center; }
+  .podium .p-rank{ font-size:1.4rem; }
+  .podium .p-idea{ font-size:.78rem; font-weight:700; margin:4px 0; word-break:break-all; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .podium .p-score{ font-family:var(--font-display); font-size:1.1rem; color:var(--primary); }
+  .podium .p-1{ background:var(--accent-soft); transform:scale(1.03); }
+  .podium .p-empty{ flex:1; text-align:center; color:var(--ink-soft); font-size:.85rem; padding:14px 0; border:2.5px dashed var(--ink-faint); border-radius:12px; }
+
+  /* ---------- 成就徽章 ---------- */
+  .badge-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .badge-grid .badge{ border:2.5px solid var(--ink); border-radius:12px; background:var(--paper); padding:12px 6px; text-align:center; opacity:.35; filter:grayscale(1); transition:opacity .25s ease, transform .25s ease; }
+  .badge-grid .badge.unlocked{ opacity:1; filter:none; }
+  .badge-grid .badge.unlocked:hover{ transform:translateY(-2px); }
+  .badge-grid .badge.new{ animation:badge-pop .5s cubic-bezier(.2,1.6,.4,1); }
+  @keyframes badge-pop{ 0%{ transform:scale(.6) rotate(-6deg); } 100%{ transform:scale(1) rotate(0); } }
+  .badge .b-ico{ font-size:1.6rem; }
+  .badge .b-name{ font-family:var(--font-display); font-size:.82rem; margin-top:4px; }
+  .badge .b-desc{ font-size:.68rem; color:var(--ink-soft); margin-top:2px; }
+
+  /* ---------- 主题换肤 ---------- */
+  .theme-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
+  .theme-opt{ border:3px solid var(--ink); border-radius:14px; background:var(--paper); padding:12px; cursor:pointer; transition:transform .12s ease; }
+  .theme-opt:hover{ transform:translateY(-2px); }
+  .theme-opt.sel{ outline:4px solid color-mix(in srgb, var(--seed-primary) 55%, transparent); outline-offset:2px; }
+  .theme-opt .sw-row{ display:flex; gap:6px; margin-bottom:8px; }
+  .theme-opt .sw{ width:22px; height:22px; border-radius:50%; border:2px solid var(--ink); }
+  .theme-opt .t-name{ font-family:var(--font-display); font-size:.95rem; }
+  .theme-opt .t-desc{ font-size:.72rem; color:var(--ink-soft); margin-top:2px; }
+
+  /* ---------- 评委档案卡 ---------- */
+  .judge-card{ text-align:center; }
+  .judge-card .j-ava{ width:96px; height:96px; margin:0 auto 10px; }
+  .judge-card .j-ava svg{ width:96px; height:96px; }
+  .judge-card h3{ font-size:1.35rem; }
+  .judge-card .j-intro{ font-size:.9rem; color:var(--ink-soft); margin:8px 0 14px; }
+  .judge-card .j-row{ display:flex; gap:8px; align-items:flex-start; text-align:left; border:2px solid var(--ink); border-radius:10px; background:var(--paper); padding:10px 12px; margin-bottom:8px; font-size:.85rem; }
+  .judge-card .j-row b{ flex:none; font-family:var(--font-display); font-size:.8rem; color:var(--primary); }
+  .judge-card .j-vote{ border-color:var(--primary); background:var(--accent-soft); }
+  .role-block{ cursor:pointer; }
+
+  /* ---------- 回炉操作台 ---------- */
+  .dir-list{ display:flex; flex-direction:column; gap:8px; }
+  .dir-item{ display:flex; gap:10px; align-items:flex-start; border:2px solid var(--ink); border-radius:10px; background:var(--paper); padding:9px 12px; font-size:.85rem; }
+  .dir-item .d-role{ flex:none; font-family:var(--font-display); font-size:.8rem; color:var(--primary); min-width:56px; }
+  .dir-item.loading{ justify-content:center; color:var(--ink-soft); padding:16px; }
+  .pick-list{ display:flex; flex-direction:column; gap:8px; }
+  .pick-item{ display:flex; gap:10px; align-items:flex-start; border:2px solid var(--ink); border-radius:10px; background:var(--paper); padding:10px 12px; font-size:.88rem; cursor:pointer; }
+  .pick-item input{ margin-top:3px; width:16px; height:16px; accent-color:var(--primary); flex:none; }
+  .pick-item.checked{ background:var(--accent-soft); }
+
+  /* ---------- 彩带 ---------- */
+  #confetti{ position:fixed; inset:0; pointer-events:none; z-index:150; overflow:hidden; }
+  .confetti-piece{ position:absolute; top:-20px; width:10px; height:14px; border-radius:2px; animation:confetti-fall linear forwards; }
+  @keyframes confetti-fall{ to{ transform:translateY(105vh) rotate(720deg); } }
+
+  /* ---------- 落地提示词 ---------- */
+  .landing-box{ margin-top:4px; }
+  .landing-box pre{
+    background:var(--paper); border:2.5px solid var(--ink); border-radius:12px;
+    padding:14px; font-size:.85rem; line-height:1.65; max-height:420px; overflow:auto;
+    white-space:pre-wrap; word-break:break-word; color:var(--ink); font-family:var(--font-body);
+  }
+
+  /* ---------- 评委名片（Prompt 厨房） ---------- */
+  .judge-cards{ display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-top:10px; }
+  .judge-card-mini{ border:var(--ink-w) solid var(--ink); border-radius:var(--seed-radius);
+    background:var(--card); color:var(--ink); box-shadow:var(--shadow-hard-sm); padding:14px 12px 12px; cursor:pointer;
+    transition:transform .15s ease; }
+  .judge-card-mini:hover{ transform:translateY(-3px) rotate(-.5deg); }
+  .judge-card-mini .jc-ava{ width:52px; height:52px; margin:0 auto 8px; }
+  .judge-card-mini .jc-ava svg{ width:52px; height:52px; }
+  .judge-card-mini h3{ font-size:.92rem; text-align:center; margin-bottom:6px; }
+  .judge-card-mini .jc-intro{ font-size:.74rem; color:var(--ink-soft); text-align:center; margin-bottom:10px; }
+  .judge-card-mini .jc-list{ list-style:none; padding:0; margin:0 0 10px; }
+  .judge-card-mini .jc-list li{ display:flex; gap:6px; font-size:.71rem; border-top:2px dashed var(--line); padding:5px 0 2px; }
+  .judge-card-mini .jc-list b{ flex:none; color:var(--primary); font-family:var(--font-display); font-size:.68rem; }
+  .judge-card-mini .jc-design{ font-size:.69rem; color:var(--ink-soft); border:2px dashed var(--line); border-radius:8px; padding:6px 8px; }
+  .judge-card-mini .jc-design b{ color:var(--ink); }
+  .judge-card-mini .jc-hint{ text-align:center; font-size:.64rem; color:var(--ink-faint); margin-top:8px; }
+  @media (max-width:1100px){ .judge-cards{ grid-template-columns:repeat(3,1fr); } }
+  @media (max-width:700px){ .judge-cards{ grid-template-columns:repeat(2,1fr); } }
+
+  /* ---------- 落地问诊面板 ---------- */
+  .landing-panel{ margin-top:14px; border:var(--ink-w) solid var(--ink); border-radius:var(--seed-radius);
+    background:var(--accent-soft); padding:18px 18px 16px; }
+  .landing-panel[hidden]{ display:none; }
+  .lp-head{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+  .lp-kicker{ font-family:var(--font-display); font-size:.78rem; color:var(--primary); background:var(--card);
+    border:2px solid var(--ink); padding:2px 10px; border-radius:999px; }
+  .lp-head h4{ font-size:1.1rem; margin:0; }
+  .lp-dots{ display:flex; gap:6px; margin-left:auto; }
+  .lp-dot{ width:10px; height:10px; border-radius:50%; border:2px solid var(--ink); background:var(--card); }
+  .lp-dot.on{ background:var(--primary); }
+  .lp-dot.done{ background:var(--accent); }
+  .lp-summary{ border:2px dashed var(--ink); border-radius:10px; background:var(--card); padding:12px 14px; font-size:.9rem; margin-bottom:10px; }
+  .lp-summary .hl{ color:var(--primary); font-weight:700; }
+  .lp-tip{ font-size:.85rem; color:var(--ink-soft); margin:10px 0; }
+  .lp-q{ font-size:1.05rem; font-weight:700; margin:6px 0 12px; }
+  .lp-opts{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
+  .lp-opt{ font-family:var(--font-body); font-size:.9rem; color:var(--ink); background:var(--card);
+    border:2.5px solid var(--ink); border-radius:10px; padding:12px 14px; cursor:pointer; text-align:left;
+    transition:transform .1s ease, background .15s ease; }
+  .lp-opt:hover{ transform:translateY(-1px); }
+  .lp-opt.sel{ background:var(--accent-soft); outline:3px solid color-mix(in srgb, var(--seed-primary) 50%, transparent); outline-offset:1px; }
+  .lp-opt.rec{ background:color-mix(in srgb, var(--seed-accent) 18%, var(--card)); }
+  .lp-opt .lp-rec{ display:inline-block; margin-left:8px; font-size:.72rem; color:var(--primary);
+    background:var(--card); border:2px solid var(--primary); border-radius:999px; padding:1px 8px;
+    font-family:var(--font-display); vertical-align:1px; }
+  .lp-center{ text-align:center; color:var(--ink-soft); padding:26px 0; }
+  .lp-divider{ margin:2px 0 12px; padding:8px 12px; border-radius:10px; text-align:center;
+    background:var(--card); border:2px solid var(--ink); font-family:var(--font-display); font-size:.9rem; color:var(--primary); }
+  @media (max-width:600px){ .lp-opts{ grid-template-columns:1fr; } }
+
+  /* ---------- 评委发言里的建设性建议行 ---------- */
+  .bubble .tip{ display:none; margin-top:10px; padding:8px 12px; border-radius:10px;
+    background:color-mix(in srgb, var(--seed-accent) 22%, var(--seed-surface));
+    border:2px dashed var(--primary); font-size:.86rem; color:var(--ink); }
+  .bubble .tip.show{ display:block; animation:pop .3s cubic-bezier(.2,1.4,.4,1); }
+
+  /* ---------- 响应式 ---------- */
+  @media (max-width: 860px){
+    .prompt-grid{ grid-template-columns:1fr; }
+    .report-grid{ grid-template-columns:1fr; }
+    .stamp{ right:auto; left:50%; top:-26px; transform:translateX(-50%) rotate(12deg); }
+    .stamp.slam{ animation-name:slam-m; }
+    @keyframes slam-m{ 0%{ transform:translateX(-50%) rotate(12deg) scale(2.4); opacity:0; } 100%{ transform:translateX(-50%) rotate(12deg) scale(1); opacity:1; } }
+    .about-card{ grid-template-columns:1fr; text-align:center; justify-items:center; }
+  }
+  @media (max-width: 560px){
+    .wrap{ padding:0 16px; }
+    .hero{ padding:52px 0 44px; }
+    .role-block{ flex-direction:column; gap:12px; }
+    .role-avatar{ display:flex; align-items:center; gap:10px; width:auto; }
+    .role-avatar svg{ width:54px; height:54px; }
+    .role-tag{ margin-top:0; }
+    .bubble::before{ display:none; }
+    .idea-foot{ flex-direction:column; align-items:stretch; }
+    .btn{ width:100%; justify-content:center; }
+    .nav{ gap:10px; flex-wrap:wrap; justify-content:flex-end; }
+    .nav a{ font-size:.92rem; }
+    .nav-hbtn, .mode-pill{ font-size:.8rem; padding:5px 10px; }
+    .report{ padding:30px 18px; }
+    .report-inner{ padding:26px 16px; }
+    .grill-status{ min-width:auto; font-size:.85rem; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    html{ scroll-behavior:auto; }
+    *, *::before, *::after{ animation:none !important; transition:none !important; }
+    .ticker-track{ animation:none !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= 顶栏 ================= -->
+<header class="topbar" data-component="header">
+  <div class="wrap topbar-inner">
+    <a class="logo" href="#top" aria-label="idea烤串机 首页">
+      <svg viewBox="0 0 40 40" aria-hidden="true">
+        <path d="M20 4 C24 10 30 13 30 21 A10 10 0 0 1 10 21 C10 13 16 10 20 4 Z" style="fill:var(--primary);stroke:var(--ink)" stroke-width="2.5" stroke-linejoin="round"/>
+        <path d="M20 15 C22 18 25 19.5 25 23 A5 5 0 0 1 15 23 C15 19.5 18 18 20 15 Z" style="fill:var(--accent);stroke:var(--ink)" stroke-width="2"/>
+      </svg>
+      idea烤串机
+    </a>
+    <nav class="nav" aria-label="页面导航" data-component="nav">
+      <a href="#stage">烤制现场</a>
+      <a href="#kitchen">Prompt厨房</a>
+      <a href="#about">关于</a>
+      <button class="nav-hbtn" id="themeBtn" type="button" title="换炭火·换皮肤">炭火</button>
+      <button class="nav-hbtn" id="statsBtn" type="button" title="战绩与烤榜">战绩</button>
+      <button class="nav-hbtn" id="historyBtn" type="button" title="查看烤串档案">档案</button>
+      <button class="mode-pill" id="modePill" type="button" title="API 设置">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1.8 L12 6 L16.5 6.3 L13.3 9 L14.2 13.5 L10 11.3 L5.8 13.5 L6.7 9 L3.5 6.3 L8 6 Z" fill="currentColor"/></svg>
+        <span id="modePillText">演示模式</span>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ================= Hero ================= -->
+  <section class="hero wrap" data-component="hero">
+    <div class="hero-badges" aria-label="五位评委">
+      <span class="badge b1">毒舌投资人</span>
+      <span class="badge b2">真实用户</span>
+      <span class="badge b5">暴躁工程师</span>
+      <span class="badge b4">法务</span>
+      <span class="badge b3">竞品PM</span>
+    </div>
+    <h1>把你的产品想法<br>架在火上<span class="hot">烤一烤</span></h1>
+    <p class="tagline">五位 AI 评委，一轮毒舌吐槽，一份<strong>存活评估报告</strong>。段子是现烤的，产品常识是认真的——看看你的 idea 到底几分熟。</p>
+
+    <div class="idea-box card" id="ideaBox" data-component="idea-input">
+      <span class="tape" aria-hidden="true"></span>
+      <div class="idea-box-inner">
+        <label class="idea-label" for="ideaInput">
+          <svg width="20" height="20" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 4 C24 10 30 13 30 21 A10 10 0 0 1 10 21 C10 13 16 10 20 4 Z" style="fill:var(--primary);stroke:var(--ink)" stroke-width="2.5" stroke-linejoin="round"/></svg>
+          今天想烤点什么？
+        </label>
+        <textarea id="ideaInput" maxlength="140" placeholder="例如：一个会骂醒我的 AI 闹钟，越懒骂得越狠……"></textarea>
+        <p class="idea-error" id="ideaError" role="alert">烤架不能空烧——先写一句你的产品想法吧。</p>
+        <div class="idea-foot">
+          <span class="char-count" id="charCount">0 / 140</span>
+          <button class="btn btn-primary" id="roastBtn" disabled>
+            <svg width="20" height="20" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 4 C24 10 30 13 30 21 A10 10 0 0 1 10 21 C10 13 16 10 20 4 Z" fill="currentColor" opacity=".9"/></svg>
+            开烤！
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="heat-selector" data-component="heat-selector" role="group" aria-label="烤制火候">
+      <span class="heat-label">🔥 火候：</span>
+      <button class="heat-btn" type="button" data-heat="gentle">温柔烤</button>
+      <button class="heat-btn active" type="button" data-heat="normal">标准烤</button>
+      <button class="heat-btn" type="button" data-heat="hell">地狱烤</button>
+    </div>
+
+    <div class="examples" data-component="example-ideas">
+      <div class="examples-head">
+        <p>没带想法？从冰柜里拿一串现成的：</p>
+        <button class="refresh-btn" id="shuffleChips" type="button" title="换一批">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
+          换一批
+        </button>
+        <button class="refresh-btn" id="randomIdeaBtn" type="button" title="随机灵感生成器">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="3.5"/></svg>
+          今天烤什么
+        </button>
+      </div>
+      <div class="chips" id="chips"></div>
+    </div>
+
+    <p class="demo-note">透明声明：烤架支持两种模式——点击右上角「演示模式」配置 API Key 后，五位评委将由真实大模型现烤（需接口允许浏览器跨域）；未配置时由前端脚本「关键词嗅探 + 角色模板」现场拼装演示版吐槽。你的 API Key 仅保存在本机浏览器 localStorage，不会上传到任何第三方服务器。</p>
+  </section>
+
+  <!-- ================= 跑马灯 ================= -->
+  <div class="ticker" aria-hidden="true" data-component="ticker">
+    <div class="ticker-track" id="tickerTrack">
+      <span>现烤现卖<i>·</i>毒舌但有依据<i>·</i>五分熟不算熟<i>·</i>禁止空洞否定<i>·</i>吐槽必须可回应<i>·</i>火候比情怀重要<i>·</i></span>
+      <span>现烤现卖<i>·</i>毒舌但有依据<i>·</i>五分熟不算熟<i>·</i>禁止空洞否定<i>·</i>吐槽必须可回应<i>·</i>火候比情怀重要<i>·</i></span>
+    </div>
+  </div>
+
+  <!-- ================= 烤制现场 ================= -->
+  <section class="stage wrap" id="stage" data-component="roast-stage">
+    <div class="section-head">
+      <span class="kicker">烤制现场</span>
+      <h2>五位评委，轮番开火</h2>
+      <p>顺序固定：先谈钱，再谈用户，再谈实现，再谈合规，最后被竞品补刀。</p>
+    </div>
+
+    <div class="grill-bar card" id="grillBar" aria-hidden="true" data-component="grill-progress">
+      <svg class="flame" viewBox="0 0 40 40" aria-hidden="true">
+        <path class="outer" d="M20 4 C24 10 30 13 30 21 A10 10 0 0 1 10 21 C10 13 16 10 20 4 Z" style="fill:var(--primary);stroke:var(--ink)" stroke-width="2.5" stroke-linejoin="round"/>
+        <path d="M20 15 C22 18 25 19.5 25 23 A5 5 0 0 1 15 23 C15 19.5 18 18 20 15 Z" style="fill:var(--accent)"/>
+      </svg>
+      <div class="grill-track"><div class="grill-fill" id="grillFill"></div></div>
+      <span class="grill-status" id="grillStatus">点火预热中…</span>
+    </div>
+
+    <div class="empty-grill" id="emptyGrill">
+      <svg viewBox="0 0 200 90" aria-hidden="true">
+        <rect x="20" y="30" width="160" height="8" rx="4" fill="none" style="stroke:var(--ink-faint)" stroke-width="3"/>
+        <rect x="20" y="52" width="160" height="8" rx="4" fill="none" style="stroke:var(--ink-faint)" stroke-width="3"/>
+        <circle cx="60" cy="34" r="7" fill="none" style="stroke:var(--ink-faint)" stroke-width="3"/>
+        <circle cx="100" cy="34" r="7" fill="none" style="stroke:var(--ink-faint)" stroke-width="3"/>
+        <circle cx="140" cy="34" r="7" fill="none" style="stroke:var(--ink-faint)" stroke-width="3"/>
+        <path d="M95 74 C97 70 103 70 105 74" fill="none" style="stroke:var(--ink-faint)" stroke-width="3" stroke-linecap="round"/>
+      </svg>
+      <p>烤架空烧中，就等你的 idea 下串了。</p>
+    </div>
+
+    <div class="roast-list" id="roastList" aria-live="polite" data-component="roast-list"></div>
+  </section>
+
+  <!-- ================= 存活评估报告 ================= -->
+  <section class="verdict wrap" id="verdict" data-component="verdict-report">
+    <div class="section-head">
+      <span class="kicker">出炉</span>
+      <h2>存活评估报告</h2>
+    </div>
+
+    <div class="report card" id="report" data-component="report-card">
+      <span class="tape" aria-hidden="true"></span>
+      <div class="report-inner">
+        <div class="report-head">
+          <div class="cert-title">烤制证书</div>
+          <div class="cert-sub" id="certMeta">编号 BBQ-0000 · 出炉日期 ----</div>
+        </div>
+
+        <div class="report-grid">
+          <div class="score-side">
+            <div class="stamp" id="stamp">--</div>
+            <div class="score-num" id="scoreNum">--<small> / 100</small></div>
+            <p class="score-caption">综合存活分 · 由五位评委的唾沫星子加权得出</p>
+            <p class="score-caption" style="margin-top:14px" id="ideaEcho">受烤想法：--</p>
+          </div>
+          <div class="radar-side">
+            <svg id="radarSvg" viewBox="0 0 460 360" role="img" aria-label="五维评估雷达图"></svg>
+          </div>
+        </div>
+
+        <div class="verdict-line"><b>主厨判词：</b><span id="verdictText">--</span></div>
+
+        <div class="advice-list" id="adviceList"></div>
+
+        <div class="v2-compare" id="v2Compare"></div>
+
+        <div class="report-actions">
+          <button class="btn btn-primary" id="againBtn">再烤一个</button>
+          <button class="btn btn-ghost" id="reheatBtn">🔥 回炉重造</button>
+          <button class="btn btn-ghost" id="landingBtn">📋 落地提示词</button>
+          <button class="btn btn-ghost" id="copyBtn">复制报告</button>
+          <button class="btn btn-ghost" id="shareBtn">下载分享卡</button>
+        </div>
+        <div id="landingPanel" class="landing-panel" hidden></div>
+        <p class="report-foot" id="reportFoot">idea烤串机 · 演示版出品 · 本报告不构成任何投资建议，但构成谈资</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= Prompt 厨房 ================= -->
+  <section class="kitchen" id="kitchen" data-component="prompt-lab">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="kicker">幕后</span>
+        <h2>Prompt 厨房</h2>
+        <p>段子是演的，设计是真的。五位评委的配方不公开，但人设必须带戏——点任意一张名片，还能看他们的完整档案与「这一票的理由」。</p>
+      </div>
+
+      <div class="judge-cards" id="judgeCards"></div>
+    </div>
+  </section>
+
+  <!-- ================= 关于 ================= -->
+  <section class="about wrap" id="about" data-component="about">
+    <div class="about-card card">
+      <span class="tape" aria-hidden="true"></span>
+      <svg class="chef-svg" viewBox="0 0 150 150" aria-hidden="true">
+        <circle cx="75" cy="82" r="46" style="fill:var(--accent);stroke:var(--ink)" stroke-width="4"/>
+        <path d="M40 62 Q45 30 75 30 Q105 30 110 62 Q105 50 75 50 Q45 50 40 62 Z" style="fill:var(--card);stroke:var(--ink)" stroke-width="4" stroke-linejoin="round"/>
+        <circle cx="60" cy="78" r="4.5" style="fill:var(--ink)"/>
+        <circle cx="90" cy="78" r="4.5" style="fill:var(--ink)"/>
+        <path d="M62 98 Q75 108 88 98" fill="none" style="stroke:var(--ink)" stroke-width="4" stroke-linecap="round"/>
+        <path d="M30 128 Q75 112 120 128" fill="none" style="stroke:var(--ink)" stroke-width="4" stroke-linecap="round"/>
+        <path d="M118 40 C121 44 125 46 125 51 A7 7 0 0 1 111 51 C111 46 115 44 118 40 Z" style="fill:var(--primary);stroke:var(--ink)" stroke-width="3" stroke-linejoin="round"/>
+      </svg>
+      <div class="about-text">
+        <h2>关于烤串师傅</h2>
+        <p>这台烤串机的设计者，一位把 AI 当厨具的产品人：擅长把模糊的想法架在火上烤出真问题，也擅长给 AI 产品制定「几分熟」的标准。</p>
+        <p style="margin-top:10px">这个网站本身就是一次产品实验——从角色设定、提示词设计到评分维度，五位评委的每一句吐槽，背后都有一套可以拷问的设计逻辑。</p>
+        <div class="about-links" id="aboutLinks" data-component="contact-links">
+          <a href="https://dalangyingye.de5.net" target="_blank" rel="noopener">短剧网站</a>
+          <a href="mailto:923703261@qq.com">Email 联系</a>
+        </div>
+        <p class="about-contact">电话 / 微信：18368141028 · 邮箱：923703261@qq.com</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer data-component="footer">
+  <div class="wrap">
+    <div class="foot-logo">idea烤串机</div>
+    <p>一个把 AI 当厨具的吐槽实验 · 吐槽仅供娱乐，产品常识全是真的 · 欢迎来烤一串你的想法</p>
+  </div>
+</footer>
+
+<!-- ================= API 设置 ================= -->
+<div class="modal-mask" id="settingsMask" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+  <div class="modal">
+    <button class="modal-close" id="settingsClose" type="button" aria-label="关闭">✕</button>
+    <h3 id="settingsTitle">接入真实大模型</h3>
+    <p class="modal-sub">配置 OpenAI 兼容接口后，五位评委将由真·大模型现烤。配置仅保存在本机浏览器 localStorage。</p>
+    <div class="field">
+      <label for="cfgBase">API 地址（Base URL）</label>
+      <input id="cfgBase" type="url" placeholder="https://api.deepseek.com/v1" autocomplete="off" spellcheck="false">
+      <div class="preset-row">
+        <button class="preset-btn" type="button" data-preset="deepseek">DeepSeek</button>
+        <button class="preset-btn" type="button" data-preset="moonshot">Moonshot</button>
+        <button class="preset-btn" type="button" data-preset="openai">OpenAI</button>
+        <button class="preset-btn" type="button" data-preset="siliconflow">硅基流动</button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="cfgKey">API Key</label>
+      <input id="cfgKey" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false">
+      <p class="hint">仅存于浏览器 localStorage，只会发送到你填写的 API 地址。</p>
+    </div>
+    <div class="field">
+      <label for="cfgModel">模型</label>
+      <input id="cfgModel" type="text" placeholder="deepseek-v4-flash" autocomplete="off" spellcheck="false">
+      <p class="hint">常见示例：deepseek-v4-flash / deepseek-v4-pro / deepseek-chat / moonshot-v1-8k / gpt-4o-mini / Qwen/Qwen2.5-7B-Instruct</p>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="cfgSave" type="button">保存并测试</button>
+      <button class="btn btn-ghost" id="cfgClear" type="button">清除配置</button>
+      <button class="btn btn-ghost" id="cfgCancel" type="button">取消</button>
+    </div>
+    <p class="field hint" style="margin-top:14px">跨域说明：若你的接口不支持浏览器 CORS，测试会失败——可换用支持 CORS 的服务，或把该页面部署在自己的后端代理下。</p>
+    <p class="field hint" style="margin-top:6px">速度预期：一次完整烤制需大模型生成 5 段发言 + 打分，通常 <b>15~40 秒</b>属正常；若频繁提示超时，请检查网络（OpenAI 等境外接口在国内需代理）。</p>
+  </div>
+</div>
+
+<!-- ================= 烤串档案 ================= -->
+<div class="modal-mask" id="historyMask" role="dialog" aria-modal="true" aria-labelledby="historyTitle">
+  <div class="modal">
+    <button class="modal-close" id="historyClose" type="button" aria-label="关闭">✕</button>
+    <h3 id="historyTitle">烤串档案</h3>
+    <p class="modal-sub">最近 20 串烤过的 idea（保存在本机浏览器）。点「回看」可重新翻出旧报告。</p>
+    <div class="history-list" id="historyList"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<!-- ================= 战绩与烤榜 ================= -->
+<div class="modal-mask" id="statsMask" role="dialog" aria-modal="true" aria-labelledby="statsTitle">
+  <div class="modal">
+    <button class="modal-close" id="statsClose" type="button" aria-label="关闭">✕</button>
+    <h3 id="statsTitle">战绩 · 今日烤榜</h3>
+    <p class="modal-sub">统计基于本机浏览器里保存的烤串档案。</p>
+    <div class="stats-cards" id="statsCards"></div>
+    <h4 class="sub-title">评级分布</h4>
+    <div class="tier-bars" id="tierBars"></div>
+    <h4 class="sub-title">今日烤榜 TOP3</h4>
+    <div class="podium" id="podium"></div>
+    <h4 class="sub-title">成就徽章墙</h4>
+    <div class="badge-grid" id="badgeGrid"></div>
+  </div>
+</div>
+
+<!-- ================= 换炭火（主题） ================= -->
+<div class="modal-mask" id="themeMask" role="dialog" aria-modal="true" aria-labelledby="themeTitle">
+  <div class="modal modal-sm">
+    <button class="modal-close" id="themeClose" type="button" aria-label="关闭">✕</button>
+    <h3 id="themeTitle">换炭火 · 换套皮肤</h3>
+    <p class="modal-sub">换一炉炭，整站配色跟着变。选择会保存在本机浏览器。</p>
+    <div class="theme-grid" id="themeGrid"></div>
+  </div>
+</div>
+
+<!-- ================= 评委档案 ================= -->
+<div class="modal-mask" id="judgeMask" role="dialog" aria-modal="true" aria-labelledby="judgeTitle">
+  <div class="modal modal-sm">
+    <button class="modal-close" id="judgeClose" type="button" aria-label="关闭">✕</button>
+    <div id="judgeCard"></div>
+  </div>
+</div>
+
+<!-- ================= 回炉操作台 ================= -->
+<div class="modal-mask" id="reheatMask" role="dialog" aria-modal="true" aria-labelledby="reheatTitle">
+  <div class="modal">
+    <button class="modal-close" id="reheatClose" type="button" aria-label="关闭">✕</button>
+    <h3 id="reheatTitle">🔥 回炉重造</h3>
+    <p class="modal-sub">把吐槽变成改进：看看五位评委的优化方向，勾选你想吸纳的建议，主厨会改写一版 V2 重新上架再烤。</p>
+    <h4 class="sub-title">评委优化方向</h4>
+    <div class="dir-list" id="dirList"><div class="history-empty">正在收集评委意见…</div></div>
+    <h4 class="sub-title">选择要吸纳的建议</h4>
+    <div class="pick-list" id="pickList"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="reheatGo" type="button">生成 V2 · 回炉重烤</button>
+      <button class="btn btn-ghost" id="reheatCancel" type="button">算了</button>
+    </div>
+  </div>
+</div>
+
+<div id="confetti" aria-hidden="true"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============ 评委定义与文案库 ============ */
+  var AVATARS = {
+    investor: '<svg viewBox="0 0 80 80" aria-hidden="true"><circle cx="40" cy="42" r="28" style="fill:var(--c-investor);stroke:var(--ink)" stroke-width="3.5"/><path d="M15 34 Q18 12 40 12 Q62 12 65 34 Q58 24 40 24 Q22 24 15 34 Z" style="fill:var(--ink)"/><rect x="22" y="38" width="14" height="10" rx="2" style="fill:var(--card);stroke:var(--ink)" stroke-width="3"/><rect x="44" y="38" width="14" height="10" rx="2" style="fill:var(--card);stroke:var(--ink)" stroke-width="3"/><line x1="36" y1="43" x2="44" y2="43" style="stroke:var(--ink)" stroke-width="3"/><circle cx="29" cy="43" r="2.4" style="fill:var(--ink)"/><circle cx="51" cy="43" r="2.4" style="fill:var(--ink)"/><path d="M32 58 Q42 62 50 55" fill="none" style="stroke:var(--ink)" stroke-width="3" stroke-linecap="round"/><path d="M34 70 L40 64 L46 70 Z" style="fill:var(--accent);stroke:var(--ink)" stroke-width="2.5"/></svg>',
+    user: '<svg viewBox="0 0 80 80" aria-hidden="true"><circle cx="40" cy="42" r="28" style="fill:var(--c-user);stroke:var(--ink)" stroke-width="3.5"/><path d="M12 46 Q12 8 40 8 Q68 8 68 46 L60 42 Q60 20 40 20 Q20 20 20 42 Z" style="fill:var(--c-user);stroke:var(--ink)" stroke-width="3.5" stroke-linejoin="round"/><circle cx="31" cy="42" r="3" style="fill:var(--ink)"/><circle cx="49" cy="42" r="3" style="fill:var(--ink)"/><path d="M34 56 Q40 58 46 56" fill="none" style="stroke:var(--ink)" stroke-width="3" stroke-linecap="round"/><circle cx="20" cy="50" r="3.4" style="fill:var(--card);stroke:var(--ink)" stroke-width="2.5"/><path d="M20 53 Q22 60 30 62" fill="none" style="stroke:var(--ink)" stroke-width="2.5"/></svg>',
+    engineer: '<svg viewBox="0 0 80 80" aria-hidden="true"><circle cx="40" cy="42" r="28" style="fill:var(--c-engineer);stroke:var(--ink)" stroke-width="3.5"/><path d="M14 40 A26 26 0 0 1 66 40" fill="none" style="stroke:var(--ink)" stroke-width="5"/><rect x="10" y="38" width="9" height="14" rx="3" style="fill:var(--ink)"/><rect x="61" y="38" width="9" height="14" rx="3" style="fill:var(--ink)"/><line x1="24" y1="34" x2="35" y2="39" style="stroke:var(--ink)" stroke-width="3.5" stroke-linecap="round"/><line x1="56" y1="34" x2="45" y2="39" style="stroke:var(--ink)" stroke-width="3.5" stroke-linecap="round"/><circle cx="32" cy="45" r="2.8" style="fill:var(--ink)"/><circle cx="48" cy="45" r="2.8" style="fill:var(--ink)"/><path d="M33 59 Q40 54 47 59" fill="none" style="stroke:var(--ink)" stroke-width="3" stroke-linecap="round"/><path d="M62 16 q3 -5 6 0 M67 20 q3 -5 6 0" fill="none" style="stroke:var(--ink)" stroke-width="2.5" stroke-linecap="round"/></svg>',
+    legal: '<svg viewBox="0 0 80 80" aria-hidden="true"><circle cx="40" cy="42" r="28" style="fill:var(--c-legal);stroke:var(--ink)" stroke-width="3.5"/><path d="M18 30 Q22 14 40 14 Q58 14 62 30 L62 24 Q56 10 40 10 Q24 10 18 24 Z" style="fill:var(--ink)"/><circle cx="30" cy="42" r="8" style="fill:var(--card);stroke:var(--ink)" stroke-width="3"/><circle cx="50" cy="42" r="8" style="fill:var(--card);stroke:var(--ink)" stroke-width="3"/><line x1="38" y1="42" x2="42" y2="42" style="stroke:var(--ink)" stroke-width="3"/><circle cx="30" cy="42" r="2.4" style="fill:var(--ink)"/><circle cx="50" cy="42" r="2.4" style="fill:var(--ink)"/><line x1="34" y1="58" x2="46" y2="58" style="stroke:var(--ink)" stroke-width="3" stroke-linecap="round"/><path d="M32 70 L40 63 L48 70 L40 74 Z" style="fill:var(--card);stroke:var(--ink)" stroke-width="2.5"/></svg>',
+    rival: '<svg viewBox="0 0 80 80" aria-hidden="true"><circle cx="40" cy="42" r="28" style="fill:var(--c-rival);stroke:var(--ink)" stroke-width="3.5"/><path d="M16 32 Q20 12 42 12 Q62 12 64 26 L70 30 Q66 32 60 30 Q54 22 40 22 Q24 22 16 32 Z" style="fill:var(--ink)"/><path d="M24 36 Q30 32 36 36" fill="none" style="stroke:var(--ink)" stroke-width="3" stroke-linecap="round"/><line x1="45" y1="33" x2="56" y2="37" style="stroke:var(--ink)" stroke-width="3.5" stroke-linecap="round"/><circle cx="31" cy="43" r="2.8" style="fill:var(--ink)"/><circle cx="49" cy="44" r="2.8" style="fill:var(--ink)"/><path d="M32 57 Q42 63 50 54" fill="none" style="stroke:var(--ink)" stroke-width="3" stroke-linecap="round"/></svg>'
+  };
+
+  var ROLES = [
+    { id:"investor", tag:"毒舌投资人 · Vincent 沈", cls:"t-investor",
+      templates:{
+        normal:[
+          "「{idea}」？我每天看四十份 BP，这份排不进前三十九。先回答一个问题：{kw}这件事，用户现在拿什么凑合解决？答不上来，就别谈融资。",
+          "赛道我熟，模式没看懂。{kw}的获客成本你算过吗？如果答案是「先做做看」，那我们没什么好聊的，下一位。",
+          "有点意思——有意思到我想去投你的竞品，他们至少不会把{kw}做成这样。给你三句话的机会：凭什么是你？"
+        ],
+        gentle:[
+          "我先确认一下：{kw}这个点，你是想清楚用户现在拿什么在凑合解决了吗？我们试着把规模想小一点，从 100 个愿意付钱的用户开始，会不会更踏实？",
+          "方向不坏，但我建议先冷静想想：{kw}的获客路径，是你真的验证过，还是目前只存在于 PPT 里？咱们一步步来，先把最小的一步走扎实。"
+        ],
+        hell:[
+          "看完你这{kw}，我第一反应：这年头连小学生都知道蹭 AI。你的差异化在哪？在「我们想得挺美」吗？融资之前，先把你自己的饭碗保住吧。",
+          "赛道不新，模式不新，连包装都是旧的。{kw}做得再好，也只是在一个死掉的方向上优雅地沉船。告诉我，凭什么烧我的钱？"
+        ]
+      },
+      tips:[
+        "不过，我建议你先做 10 个付费意愿访谈，把「有人要」用数据钉死。",
+        "建议先把获客路径画成一张图，算清单用户获取成本，再谈放大。",
+        "不过，先别想估值故事，证明 100 个用户愿意掏钱，我立刻改口。"
+      ]},
+    { id:"user", tag:"真实用户 · 小李", cls:"t-user",
+      templates:{
+        normal:[
+          "等一下，你说的是我吗？可我上周刚卸载了三个差不多的东西。不是{kw}不好，是我真的懒得再注册一个新账号了。",
+          "我努力想象了一下用它的情景……没想象出来。我的一天里挤得满满当当，实在没有给{kw}留位置，不好意思啊。",
+          "功能是听懂了，但我凭什么推荐给朋友？能让我发朋友圈的东西，至少得让我显得聪明一点。{kw}能让我显得什么？"
+        ],
+        gentle:[
+          "我好像有点 get 到，但说实话，我现在的日子没特别觉得缺这个。如果{kw}能帮我把某件小事真正省下来，也许我会试试看。",
+          "不是不心动，是我已经用了好几个替代品了。{kw}要让我换，得比我现在的顺手才行呀。"
+        ],
+        hell:[
+          "又来了，又一个「智能改变生活」。我手机里 47 个 App，卸载都卸不完，凭什么给{kw}留个位置？凭你长得好看吗？",
+          "我试着用了三天——不对，我连下载都懒得点。{kw}要能让我妈学会用，再来找我，不然别浪费我的流量。"
+        ]
+      },
+      tips:[
+        "不过，如果你能把注册压到 10 秒内，我倒是愿意试一下。",
+        "建议只做我最痛的那一件事，做完做好，我再考虑推荐给朋友。",
+        "不过，加个「一键清空」这种小事，能让我多留三天。"
+      ]},
+    { id:"engineer", tag:"暴躁工程师 · 阿健", cls:"t-engineer",
+      templates:{
+        normal:[
+          "看完这个需求我血压先上来了。{kw}的数据从哪来？冷启动怎么办？你一句话的功夫，我三个月的排期，这笔账你替我算过吗？",
+          "「就加一个小功能」——每个这么说的人最后都让我重构了整个系统。{kw}涉及三方接口、内容审核、灰度回滚，你的排期表上写了几条？",
+          "技术上能做，和现在就该做，是两码事。先把{kw}的最小验证跑通再来叫我，别拿 PPT 让我估工时。"
+        ],
+        gentle:[
+          "先不泼冷水：这个思路能做，但{kw}的数据从哪来，要不要先给个最朴素的方案？我们可以从能跑的最小版本开始。",
+          "我大概算了下，如果{kw}只做最核心那一环，排期是可控的。关键是把范围守住，别让需求越滚越大。"
+        ],
+        hell:[
+          "你一开口，我就知道{kw}这单又要加班。数据从哪来？合规谁兜？灰度谁做？你脑子里是不是只有一张 PPT？",
+          "「小功能」？呵呵。{kw}背后是三套系统联调、内容审核、冷启动冷到冰点。你这排期是拿脚写的吧？"
+        ]
+      },
+      tips:[
+        "不过，先跑通最小版本，数据哪怕手工录入也别等平台。",
+        "建议把范围砍到只剩核心一环，先上线拿真实反馈。",
+        "不过，如果能用现成的 AI API 而不是自建模型，我排期能少一半。"
+      ]},
+    { id:"legal", tag:"法务 · 陈律师", cls:"t-legal",
+      templates:{
+        normal:[
+          "我一听到「{kw}」三个字就开始起草免责条款了。用户数据存在哪、谁能看、删不删得掉——这三个问题回答不了，产品就别上线。",
+          "提醒一下：只要沾上用户生成内容和 AI 生成内容，显著标识、审核机制、投诉通道一样都不能少。这不是建议，这是上线检查清单。",
+          "想法本身不违法，但按这个描述直接做，大概率踩线。先把{kw}的边界写成白纸黑字，我帮你审——今天免费。"
+        ],
+        gentle:[
+          "提醒一下：如果做{kw}，涉及用户数据的环节，建议早点把隐私说明和授权流程准备好，省得后面返工。",
+          "合规不是绊脚石，是入场券。{kw}这条线，上线前把审核与投诉通道备好，基本就稳了。"
+        ],
+        hell:[
+          "我先把丑话说在前面：{kw}要是照这个描述直接上线，我赌它活不过第一次用户投诉。数据、内容、未成年人，你踩了哪条自己心里没数？",
+          "做{kw}不是不行，是「按你说的这么做」不行。隐私说明、显著标识、投诉通道，三样少一样，我等你下架的新闻。"
+        ]
+      },
+      tips:[
+        "不过，上线前把隐私说明和用户授权准备好，基本就稳了。",
+        "建议给 AI 生成内容加上显著标识，再配好投诉通道。",
+        "不过，先把「数据存哪、谁能看、删不删得掉」写清楚，我就没意见了。"
+      ]},
+    { id:"rival", tag:"竞品 PM · Kevin", cls:"t-rival",
+      templates:{
+        normal:[
+          "巧了，我们下季度路线图里正好躺着这个。猜猜我们为什么没做？不是没想到，是算完账发现不划算。{kw}的坑，我们已经替你踩过了。",
+          "挺好的，下次别做了。{kw}这个需求我们做过 A/B 测试，留存曲线第二周就平了。你如果非做不可，记得绕开会员体系那个坑。",
+          "说实话，看到还有人在做{kw}，我挺欣慰的——说明这个赛道永远不缺新面孔，也不缺帮我们验证方向的朋友。加油，我看好你……的胆量。"
+        ],
+        gentle:[
+          "不瞒你说，{kw}这个方向我们也评估过，确实有价值，就是算下来比较重。你们如果能做得更轻，说不定真是机会。",
+          "善意提醒：{kw}的留存是难点，我们内测时第二周就掉了一大截。你们若做，务必先把留存这件事想清楚。"
+        ],
+        hell:[
+          "我们的 roadmap 上躺过一模一样的{kw}，然后被砍了——不是因为我们不行，是算完账发现这事只配给后来者当坟场。祝你好运。",
+          "欢迎来到{kw}这条赛道，目前有 20 多个团队和你一样自信。我们的 A/B 测试显示留存第二周腰斩，建议你把这份数据直接打印出来贴在工位上。"
+        ]
+      },
+      tips:[
+        "不过，你们如果能做到「打开 3 步完成」，我倒真有点担心。",
+        "建议别做平台，做单点功能，把用户迁移成本降到最低。",
+        "不过，把留存机制设计进第一天，别等第二周腰斩再补。"
+      ]}
+  ];
+
+  var DIMS = ["需求真伪","护城河","技术可行性","商业模式","抗喷度"];
+  var TIERS = [
+    { min:75, name:"米其林级", verdict:"五位评委吵起来了——这是好想法才有的待遇。别刷手机了，快去把商标和域名注册了。" },
+    { min:60, name:"七分熟",   verdict:"火候正好，外焦里嫩。离招牌菜还差一勺秘制酱料，那勺酱的名字叫「为什么是你来做」。" },
+    { min:45, name:"五分熟",   verdict:"勉强能入口，但不够香。砍掉一半功能，剩下那一半才有机会上桌。" },
+    { min:30, name:"三分熟",   verdict:"外面焦了，里面还是生的。方向里有一点火星，但你还没找到燃料。" },
+    { min:0,  name:"烤糊了",   verdict:"这个想法在烤架上没撑过第一轮。先回炉重造，别急着上桌，烟太大了。" }
+  ];
+  var ADVICE = [
+    "先找 10 个目标用户聊聊{kw}，如果他们现在的「凑合方案」过得去，这个需求就要打个问号。",
+    "把最小可用版本砍到只剩一个动作：用户打开它、完成它、获得反馈。剩下的都是第二期的事。",
+    "给{kw}找一个「离了它就不成立」的场景，宁可窄，不要泛——护城河是挖出来的，不是规划出来的。",
+    "算一笔最悲观的账：获客成本翻倍、留存减半，这个模式还成立吗？成立才值得动手。",
+    "法务那几条不是泼冷水，把它们做成上线检查清单，会帮你躲过至少一次下架危机。",
+    "把五位评委里最刺耳的那句话抄下来贴在工位上——它大概率就是你上线后收到的第一条一星差评。"
+  ];
+  var STOPWORDS = ["一个","一款","一种","我想","想要","希望","可以","能够","通过","利用","基于","关于","针对","帮助","让人","让用户","我们","你们","他们","自己","什么","这个","那个","就是","还是","以及","并且","然后","因为","所以","如果","比如","例如","产品","功能","平台","系统","应用","软件","觉得","认为","感觉","应该","可能","真的","非常","特别","有点","一些","的话","或者","而且","但是","的话","需求","解决","问题","用户","大家","做个","做个","做一","给我","给我"];
+
+  /* ============ 工具函数 ============ */
+  function $(id){ return document.getElementById(id); }
+  function hashStr(s){
+    var h = 5381;
+    for (var i=0;i<s.length;i++){ h = ((h<<5)+h+s.charCodeAt(i)) >>> 0; }
+    return h;
+  }
+  function norm(s){ return s.replace(/\s+/g," ").trim(); }
+  function extractKeywords(text){
+    var cleaned = text.replace(/[，。！？、；：""''（）()《》【】…—,.!?;:'"()\-_/\\]/g," ");
+    STOPWORDS.forEach(function(w){
+      cleaned = cleaned.split(w).join(" ");
+    });
+    var tokens = cleaned.split(/\s+/).map(function(t){ return t.trim(); })
+      .filter(function(t){ return t.length>=2 && t.length<=12 && !/^\d+$/.test(t); });
+    tokens.sort(function(a,b){ return b.length - a.length; });
+    return tokens.slice(0,3);
+  }
+  function fill(str, ctx){
+    return str.split("{idea}").join(ctx.ideaShort).split("{kw}").join(ctx.kw);
+  }
+  function pick(arr, seed){ return arr[seed % arr.length]; }
+
+  var REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ============ API 配置（OpenAI 兼容） ============ */
+  var CFG_KEY = "bbq_api_config";
+  var PRESETS = {
+    deepseek:    { base:"https://api.deepseek.com/v1",  model:"deepseek-v4-flash" },
+    moonshot:    { base:"https://api.moonshot.cn/v1",   model:"moonshot-v1-8k" },
+    openai:      { base:"https://api.openai.com/v1",    model:"gpt-4o-mini" },
+    siliconflow: { base:"https://api.siliconflow.cn/v1", model:"Qwen/Qwen2.5-7B-Instruct" }
+  };
+  function loadConfig(){
+    try{ return JSON.parse(localStorage.getItem(CFG_KEY)) || null; }catch(e){ return null; }
+  }
+  function saveConfig(cfg){
+    try{ localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); }catch(e){ /* ignore */ }
+  }
+  function clearConfig(){ try{ localStorage.removeItem(CFG_KEY); }catch(e){} }
+
+  function heatPrompt(heatKey){
+    return {
+      gentle: "火候：温柔烤——措辞温和友善、少用讽刺，但每条批评仍要具体、可回应，并给出建设性意见。",
+      normal: "火候：标准烤——毒舌但有依据，吐槽必须可回应，讽刺适度。",
+      hell:   "火候：地狱烤——火力全开、极尽毒舌讽刺，但每条批评仍须引用用户原话关键词、有事实依据，禁止人身攻击。"
+    }[heatKey] || "";
+  }
+
+  function buildApiPrompt(idea, heatKey){
+    return "你是一台「idea 烤串机」的编排引擎。用户提交了一个产品想法，需要五位评委轮番吐槽，最后给出存活评估报告。\n\n" +
+      "用户想法：" + idea + "\n\n" +
+      "五位评委（顺序固定）：\n" +
+      "1. investor 毒舌投资人 Vincent 沈：从数据、获客、竞争角度质疑。\n" +
+      "2. user 真实用户小李：只谈自己的真实使用场景，给一个「懒得用」的具体理由。\n" +
+      "3. engineer 暴躁工程师阿健：落到具体技术成本（数据来源/接口依赖/回滚方案）。\n" +
+      "4. legal 法务陈律师：只提上线前必须回答的合规问题（数据/内容/未成年人/资质）。\n" +
+      "5. rival 竞品PM Kevin：以「我们试过/我们算过」的口吻，表面祝福实则降维打击，每条含一个具体的坑。\n\n" +
+      "要求：每位评委输出「吐槽 text（50 字内，必须引用用户想法关键词，禁止空洞否定）+ 一句建设性建议 tip（30 字内，以「不过，我建议…」开头，给出可执行的具体做法）」；整体不要全是吐槽——至少 3 位评委以建设性意见为主，让批评里带干货；全局禁词：赋能、抓手、闭环、颗粒度；五条发言角度互补、各不相同。\n" +
+      heatPrompt(heatKey) + "\n\n" +
+      "最后给出五个维度打分（0-100 整数）：需求真伪、护城河、技术可行性、商业模式、抗喷度；综合存活分（0-100 整数）；一句 30 字内的主厨判词；三条各 30 字内的改进建议。\n\n" +
+      '严格只输出一个 JSON 对象，不要输出任何其他文字、不要用 Markdown 代码块。格式：{"lines":[{"id":"investor","text":"…","tip":"…"},{"id":"user","text":"…","tip":"…"},{"id":"engineer","text":"…","tip":"…"},{"id":"legal","text":"…","tip":"…"},{"id":"rival","text":"…","tip":"…"}],"dims":{"需求真伪":78,"护城河":65,"技术可行性":72,"商业模式":60,"抗喷度":80},"score":71,"verdict":"…","advice":["…","…","…"]}';
+  }
+
+  function parseJsonContent(content){
+    var text = String(content).trim();
+    var start = text.indexOf("{"), end = text.lastIndexOf("}");
+    if (start >= 0 && end > start){ text = text.slice(start, end + 1); }
+    var obj = JSON.parse(text);
+    if (!obj || typeof obj !== "object") throw new Error("返回内容不是合法 JSON");
+    return obj;
+  }
+
+  async function callChat(systemMsg, userMsg, maxTokens, timeoutMs){
+    var cfg = loadConfig();
+    if (!cfg || !cfg.apiKey) throw new Error("未配置 API");
+    var base = String(cfg.baseUrl || "").replace(/\/+$/, "");
+    if (!base) throw new Error("API 地址为空");
+    var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, timeoutMs || 90000) : null;
+    try {
+      var res = await fetch(base + "/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type":"application/json", "Authorization":"Bearer " + cfg.apiKey },
+        body: JSON.stringify({
+          model: cfg.model || "deepseek-v4-flash",
+          messages: [
+            { role:"system", content: systemMsg || "你是一个严格的 JSON 输出引擎，只输出合法 JSON。" },
+            { role:"user", content: userMsg }
+          ],
+          temperature: 0.95,
+          max_tokens: maxTokens || 1600,
+          stream: false
+        }),
+        signal: ctrl ? ctrl.signal : undefined
+      });
+      if (!res.ok){
+        var msg = "";
+        try{ msg = (await res.text()).slice(0, 140); }catch(e){}
+        throw new Error("HTTP " + res.status + (msg ? " · " + msg : ""));
+      }
+      var data = await res.json();
+      var content = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+      if (!content) throw new Error("模型未返回内容");
+      return parseJsonContent(content);
+    } catch (e) {
+      if (ctrl && ctrl.signal.aborted) throw new Error("请求超时（" + Math.round((timeoutMs || 90000) / 1000) + " 秒），请检查网络或接口");
+      throw e;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  async function callLLM(idea, heatKey){
+    return callChat(null, buildApiPrompt(idea, heatKey), 1600, 90000);
+  }
+
+  /* 把 API 报错翻译成友好中文提示 */
+  function friendlyApiError(err){
+    var msg = (err && err.message) ? String(err.message) : "未知错误";
+    var low = msg.toLowerCase();
+    if (/401|authentication fails|invalid api key|invalid_request_error/.test(low)) return "401：API Key 无效，请到 platform.deepseek.com 重新复制（注意别带空格/换行）";
+    if (/402|insufficient balance/.test(low)) return "402：账户余额不足，请先到开放平台充值";
+    if (/403/.test(low)) return "403：接口拒绝了请求（该服务可能限制浏览器直连）";
+    if (/404/.test(low)) return "404：API 地址填错了，Base URL 应填到版本号（如 https://api.deepseek.com/v1），不要带 /chat/completions";
+    if (/400|model not exist|model.*not.*found|not support/.test(low)) return "400：模型名不存在或不受支持，请检查模型名称（DeepSeek 可用 deepseek-v4-flash / deepseek-v4-pro）";
+    if (/429/.test(low)) return "429：请求太频繁，请稍后再试";
+    if (/failed to fetch|networkerror|load failed|cors|typeerror/.test(low)) return "网络/跨域问题：请求没能到达接口，请检查 API 地址和网络";
+    if (/timeout|timed out|超时|abort/.test(low)) return "连接超时，请检查网络（接口响应过慢）";
+    return "调用失败：" + msg.slice(0, 80);
+  }
+
+  async function testConnection(){
+    var cfg = loadConfig();
+    var base = String(cfg.baseUrl || "").replace(/\/+$/, "");
+    var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, 30000) : null;
+    try {
+      var res = await fetch(base + "/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type":"application/json", "Authorization":"Bearer " + cfg.apiKey },
+        body: JSON.stringify({ model: cfg.model, messages:[{ role:"user", content:"ping，只回复 pong" }], max_tokens: 8, stream:false }),
+        signal: ctrl ? ctrl.signal : undefined
+      });
+      if (!res.ok){
+        var m = "";
+        try{ m = (await res.text()).slice(0, 140); }catch(e){}
+        throw new Error("HTTP " + res.status + (m ? " · " + m : ""));
+      }
+      var d = await res.json();
+      if (!d.choices || !d.choices[0] || !d.choices[0].message) throw new Error("接口返回格式异常");
+      return d.choices[0].message;
+    } catch (e) {
+      if (ctrl && ctrl.signal.aborted) throw new Error("请求超时（20 秒），请检查网络或接口");
+      throw e;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  function scriptFromApi(idea, json){
+    var kws = extractKeywords(idea);
+    var ctx = { kw: kws[0] || "这件事", ideaShort: idea.length > 22 ? idea.slice(0,22) + "…" : idea };
+    var lines = ROLES.map(function(role){
+      var hit = null;
+      if (Array.isArray(json.lines)){
+        for (var i = 0; i < json.lines.length; i++){
+          if (json.lines[i] && json.lines[i].id === role.id && json.lines[i].text){ hit = json.lines[i]; break; }
+        }
+      }
+      var tip = (hit && hit.tip) ? hit.tip
+        : ((role.tips && role.tips.length) ? fill(pick(role.tips, hashStr(idea)), ctx) : "");
+      return { role: role, text: hit ? hit.text : fill(pick(role.templates.normal, hashStr(idea)), ctx), tip: tip };
+    });
+    var dims = DIMS.map(function(d){
+      var v = json.dims ? parseInt(json.dims[d], 10) : NaN;
+      return isNaN(v) ? 60 : Math.max(0, Math.min(100, v));
+    });
+    var score = parseInt(json.score, 10);
+    if (isNaN(score)) score = 26 + (hashStr(idea) % 58);
+    score = Math.max(0, Math.min(100, score));
+    var tier = TIERS.filter(function(t){ return score >= t.min; })[0];
+    var advice = [];
+    var rawAdv = Array.isArray(json.advice) ? json.advice.filter(Boolean) : [];
+    rawAdv = rawAdv.map(function(a){ return a.replace(/\{kw\}/g, ctx.kw); });
+    while (advice.length < 3 && rawAdv.length){ var a = rawAdv.shift(); if (advice.indexOf(a) === -1) advice.push(a); }
+    if (advice.length < 3){
+      var seed = hashStr(idea);
+      while (advice.length < 3){
+        var aa = fill(ADVICE[seed % ADVICE.length], ctx);
+        if (advice.indexOf(aa) === -1) advice.push(aa);
+        seed = Math.floor(seed / 3) + 11;
+      }
+    }
+    return {
+      ctx: ctx, lines: lines, score: score, dims: dims, tier: tier,
+      verdict: (typeof json.verdict === "string" && json.verdict.trim()) ? json.verdict.trim() : tier.verdict,
+      advice: advice, serial: (hashStr(idea) % 9000 + 1000)
+    };
+  }
+
+  /* ============ 输入交互 ============ */
+  var input = $("ideaInput"), roastBtn = $("roastBtn"), charCount = $("charCount"),
+      ideaError = $("ideaError"), ideaBox = $("ideaBox");
+
+  input.addEventListener("input", function(){
+    var len = input.value.length;
+    charCount.textContent = len + " / 140";
+    roastBtn.disabled = norm(input.value).length === 0;
+    if (len > 0){ ideaError.classList.remove("show"); }
+  });
+
+  /* ============ 现成想法（冰柜） ============ */
+  var IDEAS = [
+    "AI 看手相，顺手推荐转运水晶",
+    "宠物翻译项圈，还能帮猫点外卖",
+    "专门抢着买单的社交 App",
+    "会骂醒我的 AI 闹钟",
+    "开会自动识别谁在画饼的纪要机器人",
+    "给每顿饭拍照算碳水的减肥相机",
+    "用 AI 给朋友圈文案打分",
+    "相亲前先让 AI 排练的约会陪练",
+    "帮拖延症抢 deadline 的 AI 管家",
+    "帮程序员写周报，自动把摸鱼包装成加班",
+    "二手交易里的 AI 砍价师",
+    "情侣吵架后帮忙写和好文案的 AI 红娘",
+    "把老板语音转成文字并提炼任务清单",
+    "让老照片里的人动起来的怀旧 App",
+    "根据心情推荐 BGM 的情绪播放器",
+    "给装修的人提供避坑指南的家装顾问",
+    "半夜睡不着陪你聊天的 AI 失眠搭子",
+    "帮健身新手识别动作的 AI 教练",
+    "自动帮你抢演唱会门票的机器人",
+    "帮爸妈辨别保健品真假的辟谣助手",
+    "AI 帮小学生写作文但只给思路不给答案",
+    "能闻出隔夜饭还能不能吃的冰箱贴",
+    "把电影台词改成你名字的配音玩具",
+    "自动把冗长会议剪成 30 秒高光短视频"
+  ];
+  var CHIP_COUNT = 6;
+  var currentChips = [];
+
+  function shuffleIdeas(){
+    var pool = IDEAS.slice(), out = [];
+    while (out.length < CHIP_COUNT && pool.length){
+      out.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    }
+    return out;
+  }
+  function renderChips(arr){
+    var box = $("chips");
+    box.innerHTML = "";
+    arr.forEach(function(idea, i){
+      var b = document.createElement("button");
+      b.className = "chip pop";
+      b.type = "button";
+      b.textContent = idea;
+      b.style.animationDelay = (i * 45) + "ms";
+      b.addEventListener("click", function(){
+        input.value = idea;
+        input.dispatchEvent(new Event("input"));
+        input.focus();
+      });
+      box.appendChild(b);
+    });
+  }
+  function refreshChips(){
+    var next = shuffleIdeas();
+    if (next.join("|") === currentChips.join("|")){ next = shuffleIdeas(); }
+    currentChips = next;
+    renderChips(next);
+    var btn = $("shuffleChips");
+    btn.classList.remove("spin");
+    void btn.offsetWidth;
+    btn.classList.add("spin");
+  }
+  $("shuffleChips").addEventListener("click", refreshChips);
+
+  /* ============ 随机灵感生成器 ============ */
+  var RND_OBJ = ["AI","宠物","植物","蚊子","冰箱","微波炉","客厅里的扫地机","老板的AI","你的前任","量子","区块链","ChatGPT","小学生","打工人","装修师傅","外卖小哥","广场舞阿姨","失眠症","拖延症","选择困难症"];
+  var RND_SCN = ["相亲前","写周报时","深夜睡不着","加班到凌晨","开会走神时","抢不到演唱会票时","健身坚持不下去时","装修被坑之后","抢不到回家的票时","点外卖不知道吃啥时","背单词背不进去时","过年被催婚时"];
+  var RND_FUN = ["自动帮你圆场","把PPT改写成rap","检测同事真实心情","预测前任复合概率","给老板的饼自动称重","把外卖换成火锅","给蚊子写遗书","把你的牢骚写成诗","把会议剪成30秒高光","帮你把微信已读变成未读","把领导画的饼做成地图","自动帮你还价"];
+  function randomIdeaTemplate(){
+    var o = RND_OBJ[Math.floor(Math.random() * RND_OBJ.length)];
+    var s = RND_SCN[Math.floor(Math.random() * RND_SCN.length)];
+    var f = RND_FUN[Math.floor(Math.random() * RND_FUN.length)];
+    var extras = ["，顺手还能当护身符","，还带每日运势播报","，社恐人士福音","，第一次用就上瘾","，但要先过爸妈这关"];
+    var e = extras[Math.floor(Math.random() * extras.length)];
+    return "用" + o + "在" + s + f + e;
+  }
+  function fillRandomIdea(){
+    var idea = randomIdeaTemplate();
+    if (idea === norm(input.value)) idea = randomIdeaTemplate();
+    input.value = idea;
+    input.dispatchEvent(new Event("input"));
+    input.focus();
+    input.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block:"center" });
+  }
+  function buildIdeaPrompt(){
+    return "你是一个「离谱但合理」的 AI 创意点子生成器。请给 1 个有趣、有创意、带点幽默的产品 idea，要求：\n" +
+      "1. 结合 AI / 智能设备 / 日常生活小场景；\n" +
+      "2. 脑洞要大、可以离谱，但听完让人觉得「好像真有人会用」；\n" +
+      "3. 60 字以内，中文，口语化，不要解释。\n\n" +
+      '严格只输出 JSON：{"idea":"完整的产品点子"}';
+  }
+  var rndBusy = false;
+  function randomIdea(){
+    if (rndBusy) return;
+    var cfg = loadConfig();
+    if (!cfg || !cfg.apiKey){ fillRandomIdea(); return; }
+    rndBusy = true;
+    var btn = $("randomIdeaBtn");
+    btn.disabled = true;
+    btn.textContent = "正在想…";
+    callChat(null, buildIdeaPrompt(), 400, 45000).then(function(json){
+      rndBusy = false;
+      btn.disabled = false;
+      btn.textContent = "今天烤什么";
+      var idea = json && json.idea ? String(json.idea).trim() : "";
+      if (idea.length < 4){ toast("大模型没憋出好点子，先用模板的", "warn"); fillRandomIdea(); return; }
+      input.value = idea;
+      input.dispatchEvent(new Event("input"));
+      input.focus();
+      input.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block:"center" });
+    }).catch(function(){
+      rndBusy = false;
+      btn.disabled = false;
+      btn.textContent = "今天烤什么";
+      toast("大模型没接上，先用模板点子", "warn");
+      fillRandomIdea();
+    });
+  }
+  $("randomIdeaBtn").addEventListener("click", randomIdea);
+
+  /* ============ 火候选择 ============ */
+  var heat = "normal";
+  document.querySelectorAll(".heat-btn").forEach(function(b){
+    b.addEventListener("click", function(){
+      document.querySelectorAll(".heat-btn").forEach(function(x){ x.classList.remove("active"); });
+      b.classList.add("active");
+      heat = b.getAttribute("data-heat");
+    });
+  });
+
+  /* ============ 换炭火（主题换肤） ============ */
+  var THEME_KEY = "bbq_theme";
+  var THEMES = [
+    { id:"classic",  name:"经典原味", desc:"奶油橙 + 火焰橙，原汁原味", sw:["#FFF6E6","#FF5A2A","#FFC93C"],
+      vars:{ "--seed-bg":"#FFF6E6", "--seed-fg":"#241A10", "--seed-primary":"#FF5A2A", "--seed-accent":"#FFC93C", "--seed-surface":"#FFFDF7" } },
+    { id:"charcoal", name:"深夜炭火", desc:"炭黑夜景 + 橙红余烬，适合熬夜", sw:["#1E1510","#FF6B35","#FFC93C"],
+      vars:{ "--seed-bg":"#1E1510", "--seed-fg":"#F5E9D8", "--seed-primary":"#FF6B35", "--seed-accent":"#FFC93C", "--seed-surface":"#2A1E15" } },
+    { id:"lemon",    name:"柠檬汽水", desc:"柠檬黄 + 汽水绿，清爽解腻", sw:["#FFFDEB","#2FA84F","#FFD23C"],
+      vars:{ "--seed-bg":"#FFFDEB", "--seed-fg":"#1E2A10", "--seed-primary":"#2FA84F", "--seed-accent":"#FFD23C", "--seed-surface":"#FFFFF8" } },
+    { id:"mint",     name:"薄荷烧烤", desc:"薄荷青 + 青柠绿，冰火两重天", sw:["#EAF7F3","#1FA97A","#FFC93C"],
+      vars:{ "--seed-bg":"#EAF7F3", "--seed-fg":"#0F2B24", "--seed-primary":"#1FA97A", "--seed-accent":"#FFC93C", "--seed-surface":"#F4FBF8" } }
+  ];
+  function loadTheme(){ try{ return localStorage.getItem(THEME_KEY) || "classic"; }catch(e){ return "classic"; } }
+  function saveTheme(t){ try{ localStorage.setItem(THEME_KEY, t); }catch(e){} }
+  function applyTheme(id){
+    var t = null;
+    THEMES.forEach(function(x){ if (x.id === id) t = x; });
+    if (!t) return;
+    var root = document.documentElement;
+    Object.keys(t.vars).forEach(function(k){ root.style.setProperty(k, t.vars[k]); });
+    saveTheme(id);
+    renderThemeGrid();
+  }
+  function renderThemeGrid(){
+    var box = $("themeGrid");
+    box.innerHTML = "";
+    var cur = loadTheme();
+    THEMES.forEach(function(t){
+      var el = document.createElement("div");
+      el.className = "theme-opt" + (cur === t.id ? " sel" : "");
+      el.innerHTML =
+        '<div class="sw-row">' + t.sw.map(function(c){ return '<span class="sw" style="background:' + c + '"></span>'; }).join("") + '</div>' +
+        '<div class="t-name">' + t.name + '</div><div class="t-desc">' + t.desc + '</div>';
+      el.addEventListener("click", function(){ applyTheme(t.id); });
+      box.appendChild(el);
+    });
+  }
+  $("themeMask").addEventListener("click", function(e){ if (e.target === $("themeMask")) $("themeMask").classList.remove("show"); });
+  $("themeClose").addEventListener("click", function(){ $("themeMask").classList.remove("show"); });
+  $("themeBtn").addEventListener("click", function(){ renderThemeGrid(); $("themeMask").classList.add("show"); });
+
+  /* ============ 评委档案卡 ============ */
+  var JUDGES = {
+    investor: {
+      intro:"只认数字的创投圈老油条，三句话不离壁垒与获客。",
+      design:"批评必须可验证、可回应——这是「烤」和「喷」的分界线，也是评测的第一原则。",
+      rows:[
+        ["口头禅","三句话讲不清壁垒，就当我没听过。"],
+        ["代表战绩","投过 12 个项目，其中 11 个后来证明他不该投。"],
+        ["最恨","一切只讲情怀、不讲数据的 BP。"]
+      ]
+    },
+    user: {
+      intro:"被各种 App 骚扰到麻木的普通用户，注册表单超过 3 个字段就放弃。",
+      design:"用户调研最大的敌人是客气——只留第一人称的具体场景，过滤礼貌的假反馈。",
+      rows:[
+        ["口头禅","我手机里已经够挤了。"],
+        ["代表战绩","一年卸载 47 个 App，被称为「反装逼先锋」。"],
+        ["最恨","下载完还要先注册才能看到产品长什么样。"]
+      ]
+    },
+    engineer: {
+      intro:"被产品经理气到心梗的资深开发，开口第一句永远先问排期。",
+      design:"情绪负责氛围，信息必须来自结构——只攻击排期，不攻击人。",
+      rows:[
+        ["口头禅","先估工时，再谈需求。"],
+        ["代表战绩","重构过别人承诺「一周上线」的项目 11 次。"],
+        ["最恨","「就加个小功能」和「先做个 Demo 上线」。"]
+      ]
+    },
+    legal: {
+      intro:"上线检查清单的活人版，法律条款当表情包用。",
+      design:"安全维度是红线——角色边界写成硬约束，越界的评委不值得信任。",
+      rows:[
+        ["口头禅","这句话建议写进免责条款。"],
+        ["代表战绩","亲手送走过 3 款不合规的 App。"],
+        ["最恨","「先上线再说」四个字。"]
+      ]
+    },
+    rival: {
+      intro:"永远比你多跑一次 A/B 测试的隔壁产品经理。",
+      design:"信息密度是设计出来的：要阴阳怪气，还必须带一个具体的坑。",
+      rows:[
+        ["口头禅","这个需求，我们下季度也做。"],
+        ["代表战绩","亲手砍掉过 20 个「看起来很美」的需求。"],
+        ["最恨","把竞品分析写成竞品吹捧。"]
+      ]
+    }
+  };
+  function renderJudgeCards(){
+    var box = $("judgeCards");
+    if (!box) return;
+    box.innerHTML = "";
+    ROLES.forEach(function(role){
+      var j = JUDGES[role.id];
+      if (!j) return;
+      var card = document.createElement("article");
+      card.className = "judge-card-mini";
+      card.innerHTML =
+        '<div class="jc-ava">' + AVATARS[role.id] + '</div>' +
+        '<h3>' + role.tag + '</h3>' +
+        '<p class="jc-intro">' + j.intro + '</p>' +
+        '<ul class="jc-list">' +
+          j.rows.map(function(r){ return '<li><b>' + r[0] + '</b><span>' + r[1] + '</span></li>'; }).join("") +
+        '</ul>' +
+        '<div class="jc-design"><b>设计要点：</b>' + (j.design || "") + '</div>' +
+        '<div class="jc-hint">点我看完整档案 ↓</div>';
+      card.addEventListener("click", function(){ openJudge(role, ""); });
+      box.appendChild(card);
+    });
+  }
+  function openJudge(role, voteText){
+    var j = JUDGES[role.id];
+    if (!j) return;
+    var rows = j.rows.map(function(r){
+      return '<div class="j-row"><b>' + r[0] + '：</b><span>' + r[1] + '</span></div>';
+    }).join("");
+    if (voteText){
+      rows += '<div class="j-row j-vote"><b>这一票的理由：</b><span>' + voteText + '</span></div>';
+    }
+    $("judgeCard").innerHTML =
+      '<div class="judge-card">' +
+        '<div class="j-ava">' + AVATARS[role.id] + '</div>' +
+        '<h3>' + role.tag + '</h3>' +
+        '<div class="j-intro">' + j.intro + '</div>' + rows +
+      '</div>';
+    $("judgeMask").classList.add("show");
+  }
+  $("judgeClose").addEventListener("click", function(){ $("judgeMask").classList.remove("show"); });
+  $("judgeMask").addEventListener("click", function(e){ if (e.target === $("judgeMask")) $("judgeMask").classList.remove("show"); });
+  $("roastList").addEventListener("click", function(e){
+    var block = e.target.closest ? e.target.closest(".role-block") : null;
+    if (!block) return;
+    var cls = block.className || "";
+    var role = null;
+    ROLES.forEach(function(r){ if (cls.indexOf(r.cls) !== -1) role = r; });
+    if (!role) return;
+    var txtEl = block.querySelector(".txt");
+    openJudge(role, txtEl ? txtEl.textContent : "");
+  });
+
+  roastBtn.addEventListener("click", function(){
+    var val = norm(input.value);
+    if (!val){
+      ideaError.classList.add("show");
+      ideaBox.classList.remove("shake");
+      void ideaBox.offsetWidth;
+      ideaBox.classList.add("shake");
+      input.focus();
+      return;
+    }
+    startRoast(val);
+  });
+
+  /* ============ 烤制流程 ============ */
+  var state = { running:false, idea:"", ctx:null, lines:[], dims:[], score:0, tier:null, advice:[], serial:0, mode:"demo", verdict:"", v2From:null, pendingV2:false };
+
+  function buildScript(idea, heatKey){
+    heatKey = heatKey || "normal";
+    var kws = extractKeywords(idea);
+    var kw = kws[0] || "这件事";
+    var ideaShort = idea.length > 22 ? idea.slice(0,22) + "…" : idea;
+    var ctx = { kw:kw, ideaShort:ideaShort };
+    var h = hashStr(idea);
+
+    var lines = ROLES.map(function(role, i){
+      var set = role.templates[heatKey] || role.templates.normal;
+      var tip = (role.tips && role.tips.length) ? fill(pick(role.tips, h + i*13 + 5), ctx) : "";
+      return { role:role, text: fill(pick(set, h + i*7), ctx), tip:tip };
+    });
+
+    var score = 26 + (h % 58); // 26 ~ 83
+    var dims = DIMS.map(function(_, i){
+      return 25 + ((h >>> (i*3)) % 71); // 25 ~ 95，无符号右移避免高位哈希产生负分
+    });
+    var tier = TIERS.filter(function(t){ return score >= t.min; })[0];
+    var advice = [];
+    var seed = h;
+    while (advice.length < 3){
+      var a = fill(ADVICE[seed % ADVICE.length], ctx);
+      if (advice.indexOf(a) === -1) advice.push(a);
+      seed = Math.floor(seed / 3) + 11;
+    }
+    return { ctx:ctx, lines:lines, score:score, dims:dims, tier:tier, advice:advice, verdict:tier.verdict, serial:(h % 9000 + 1000) };
+  }
+
+  function startRoast(idea){
+    if (state.running) return;
+    state.running = true;
+    state.idea = idea;
+    if (!state.pendingV2) state.v2From = null;
+    state.pendingV2 = false;
+
+    input.disabled = true;
+    roastBtn.disabled = true;
+    roastBtn.textContent = "烤制中…";
+    $("report").classList.remove("show");
+    $("emptyGrill").style.display = "none";
+    $("grillBar").classList.add("show");
+
+    var list = $("roastList");
+    list.innerHTML = "";
+
+    var cfg = loadConfig();
+    if (cfg && cfg.apiKey){
+      state.mode = "api";
+      setGrill(4, "大模型生成中，约需 15~40 秒…");
+      callLLM(idea, heat).then(function(json){
+        runScript(idea, scriptFromApi(idea, json), "api");
+      }).catch(function(err){
+        toast("API 调用失败：" + friendlyApiError(err) + "，已切换演示模式", "warn");
+        runScript(idea, buildScript(idea, heat), "demo");
+      });
+    } else {
+      state.mode = "demo";
+      runScript(idea, buildScript(idea, heat), "demo");
+    }
+  }
+
+  function runScript(idea, script, mode){
+    state.ctx = script.ctx; state.lines = script.lines; state.dims = script.dims;
+    state.score = script.score; state.tier = script.tier; state.advice = script.advice;
+    state.serial = script.serial; state.mode = mode;
+    state.verdict = script.verdict || script.tier.verdict;
+
+    var list = $("roastList");
+    script.lines.forEach(function(line){
+      var block = document.createElement("div");
+      block.className = "role-block " + line.role.cls;
+      block.innerHTML =
+        '<div class="role-avatar">' + AVATARS[line.role.id] +
+          '<span class="role-tag">' + line.role.tag + '</span></div>' +
+        '<div class="bubble"><div class="who">' + line.role.tag + '</div><div class="txt"></div><div class="tip"></div></div>';
+      var tipEl = block.querySelector(".tip");
+      if (line.tip){
+        tipEl.textContent = "💡 建议：" + line.tip;
+      } else {
+        tipEl.style.display = "none";
+      }
+      list.appendChild(block);
+    });
+
+    $("stage").scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block:"start" });
+
+    var order = ["预热中…","投资人开火…","用户发言…","工程师上线…","法务过目…","竞品补刀…","装盘出证…"];
+    setGrill(4, order[0]);
+    setTimeout(function(){ typeNext(0, order); }, REDUCED ? 80 : 500);
+  }
+
+  function setGrill(pct, text){
+    $("grillFill").style.width = pct + "%";
+    $("grillStatus").textContent = text;
+  }
+
+  function typeNext(idx, order){
+    if (idx >= state.lines.length){
+      setGrill(100, order[order.length-1]);
+      setTimeout(showReport, REDUCED ? 120 : 600);
+      return;
+    }
+    var block = $("roastList").children[idx];
+    block.classList.add("on");
+    setGrill(6 + idx*16, order[idx+1] || "烤制中…");
+    block.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block:"center" });
+
+    var txtEl = block.querySelector(".txt");
+    var text = state.lines[idx].text;
+
+    if (REDUCED){
+      txtEl.textContent = text;
+      var t0 = block.querySelector(".tip");
+      if (t0) t0.classList.add("show");
+      setTimeout(function(){ typeNext(idx+1, order); }, 150);
+      return;
+    }
+    var caret = document.createElement("span");
+    caret.className = "caret";
+    txtEl.appendChild(caret);
+    var i = 0;
+    (function tick(){
+      if (i < text.length){
+        txtEl.insertBefore(document.createTextNode(text[i]), caret);
+        i++;
+        setTimeout(tick, 24 + Math.random()*26);
+      } else {
+        caret.remove();
+        var t = block.querySelector(".tip");
+        if (t) t.classList.add("show");
+        setTimeout(function(){ typeNext(idx+1, order); }, 420);
+      }
+    })();
+  }
+
+  /* ============ 报告 ============ */
+  function showReport(skipAdd){
+    var report = $("report");
+    report.classList.add("show");
+
+    $("certMeta").textContent = "编号 BBQ-" + state.serial + " · 出炉日期 " + todayStr();
+    $("ideaEcho").textContent = "受烤想法：" + state.idea;
+    $("scoreNum").innerHTML = state.score + "<small> / 100</small>";
+    $("verdictText").textContent = state.verdict || state.tier.verdict;
+
+    var stamp = $("stamp");
+    stamp.textContent = state.tier.name;
+    stamp.classList.remove("slam");
+    void stamp.offsetWidth;
+    stamp.classList.add("slam");
+
+    drawRadar(state.dims);
+
+    var list = $("adviceList");
+    list.innerHTML = "";
+    state.advice.forEach(function(a, i){
+      var item = document.createElement("div");
+      item.className = "advice-item";
+      item.innerHTML = '<span class="no">' + (i+1) + '</span><span>' + a + '</span>';
+      list.appendChild(item);
+    });
+
+    $("reportFoot").textContent = "idea烤串机 · " + (state.mode === "api" ? "真·AI现烤" : "演示模式") +
+      " · 本报告不构成任何投资建议，但构成谈资";
+
+    /* 回炉对比条 */
+    var cmp = $("v2Compare");
+    if (state.v2From != null){
+      var delta = state.score - state.v2From;
+      var cls = delta >= 0 ? "up" : "down";
+      var sign = delta >= 0 ? "+" : "";
+      cmp.className = "v2-compare show";
+      cmp.innerHTML = '<span class="v2-label">🔥 回炉成果</span><span class="v2-flow">V1 ' + state.v2From +
+        ' 分 → V2 ' + state.score + ' 分</span><span class="v2-delta ' + cls + '">' + sign + delta + '</span>';
+    } else {
+      cmp.className = "v2-compare";
+      cmp.innerHTML = "";
+    }
+
+    state.running = false;
+    input.disabled = false;
+    roastBtn.disabled = norm(input.value).length === 0;
+    roastBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 4 C24 10 30 13 30 21 A10 10 0 0 1 10 21 C10 13 16 10 20 4 Z" fill="currentColor" opacity=".9"/></svg> 开烤！';
+
+    if (!skipAdd) addHistory(makeRecord());
+
+    /* 成就结算（在入库之后，确保烤串数已 +1） */
+    var news = checkBadges();
+    var cele = false;
+    news.forEach(function(b){
+      toast("解锁成就：" + b.ico + " " + b.name, "ok");
+      if (b.id === "eighty" || b.id === "ten") cele = true;
+    });
+    if (cele) confetti();
+
+    report.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block:"start" });
+  }
+
+  function makeRecord(){
+    return {
+      idea: state.idea, time: Date.now(), mode: state.mode,
+      score: state.score, tierName: state.tier.name, serial: state.serial,
+      dims: state.dims.slice(), advice: state.advice.slice(), verdict: state.verdict,
+      lines: state.lines.map(function(l){ return { id: l.role.id, text: l.text, tip: l.tip || "" }; })
+    };
+  }
+
+  function todayStr(){
+    var d = new Date();
+    return d.getFullYear() + " 年 " + (d.getMonth()+1) + " 月 " + d.getDate() + " 日";
+  }
+
+  function polar(cx, cy, r, i, total){
+    var ang = -Math.PI/2 + i * 2*Math.PI/total;
+    return [cx + r*Math.cos(ang), cy + r*Math.sin(ang)];
+  }
+  function polyPoints(cx, cy, r, total){
+    var pts = [];
+    for (var i=0;i<total;i++){ pts.push(polar(cx,cy,r,i,total).map(function(n){return n.toFixed(1);}).join(",")); }
+    return pts.join(" ");
+  }
+  function drawRadar(vals){
+    var svg = $("radarSvg");
+    var cx=230, cy=172, R=100, n=vals.length;
+    var html = "";
+    [0.33,0.66,1].forEach(function(k){
+      html += '<polygon points="' + polyPoints(cx,cy,R*k,n) + '" fill="none" style="stroke:var(--ink-faint)" stroke-width="2"/>';
+    });
+    for (var i=0;i<n;i++){
+      var p = polar(cx,cy,R,i,n);
+      html += '<line x1="'+cx+'" y1="'+cy+'" x2="'+p[0].toFixed(1)+'" y2="'+p[1].toFixed(1)+'" style="stroke:var(--ink-faint)" stroke-width="2"/>';
+    }
+    var dataPts = vals.map(function(v,i){
+      var p = polar(cx, cy, R * Math.max(0.12, v/100), i, n);
+      return p.map(function(m){return m.toFixed(1);}).join(",");
+    }).join(" ");
+    html += '<polygon points="' + dataPts + '" style="fill:color-mix(in srgb, var(--seed-primary) 26%, transparent);stroke:var(--primary)" stroke-width="3.5" stroke-linejoin="round"/>';
+    vals.forEach(function(v,i){
+      var p = polar(cx, cy, R * Math.max(0.12, v/100), i, n);
+      html += '<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="4.5" style="fill:var(--accent);stroke:var(--ink)" stroke-width="2.5"/>';
+    });
+    DIMS.forEach(function(label,i){
+      var p = polar(cx, cy, R+34, i, n);
+      var anchor = Math.abs(p[0]-cx) < 12 ? "middle" : (p[0] > cx ? "start" : "end");
+      var tx = p[0], ty = p[1] + 4;
+      // 防溢出：把靠近边缘的标签再往内收一点
+      if (anchor === "start"  && tx > 375) tx = 375;
+      if (anchor === "end"    && tx < 85)  tx = 85;
+      if (anchor === "middle" && ty < 26)  ty = 26;
+      if (anchor === "middle" && ty > 336) ty = 336;
+      html += '<text x="'+tx.toFixed(1)+'" y="'+ty.toFixed(1)+'" text-anchor="'+anchor+'" font-size="13" font-weight="700" style="fill:var(--ink)" font-family="Noto Sans SC, sans-serif" paint-order="stroke" stroke="var(--paper)" stroke-width="3" stroke-linejoin="round">' + label + ' ' + vals[i] + '</text>';
+    });
+    svg.innerHTML = html;
+  }
+
+  /* ============ 报告操作 ============ */
+  $("againBtn").addEventListener("click", function(){
+    state.v2From = null;
+    $("landingPanel").hidden = true;
+    landing.qs = []; landing.answers = [];
+    $("report").classList.remove("show");
+    $("roastList").innerHTML = "";
+    $("emptyGrill").style.display = "";
+    $("grillBar").classList.remove("show");
+    input.value = "";
+    input.dispatchEvent(new Event("input"));
+    document.getElementById("top").scrollIntoView({ behavior: REDUCED ? "auto" : "smooth" });
+    input.focus();
+  });
+
+  $("copyBtn").addEventListener("click", function(){
+    var text =
+      "【idea烤串机 · 存活评估报告】\n" +
+      "受烤想法：" + state.idea + "\n" +
+      "评级：" + state.tier.name + "（" + state.score + " / 100）\n" +
+      DIMS.map(function(d,i){ return d + " " + state.dims[i]; }).join(" · ") + "\n" +
+      "判词：" + (state.verdict || state.tier.verdict) + "\n" +
+      "改进建议：\n" + state.advice.map(function(a,i){ return (i+1) + ". " + a; }).join("\n") + "\n" +
+      "—— idea烤串机（演示版）现烤出品";
+    var btn = $("copyBtn");
+    function done(ok){
+      btn.textContent = ok ? "已复制！" : "复制失败";
+      setTimeout(function(){ btn.textContent = "复制报告"; }, 1600);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){ done(true); }, function(){ done(false); });
+    } else {
+      done(false);
+    }
+  });
+  /* ============ 烤串档案（历史记录） ============ */
+  var HISTORY_KEY = "bbq_history_v1";
+  function loadHistory(){
+    try{ var a = JSON.parse(localStorage.getItem(HISTORY_KEY)); return Array.isArray(a) ? a : []; }catch(e){ return []; }
+  }
+  function persistHistory(list){ try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(list)); }catch(e){} }
+  function addHistory(rec){
+    var list = loadHistory();
+    list.unshift(rec);
+    if (list.length > 20) list.length = 20;
+    persistHistory(list);
+    bumpTotal();
+  }
+  function renderHistory(){
+    var list = loadHistory();
+    var box = $("historyList");
+    if (!list.length){
+      box.innerHTML = '<div class="history-empty">档案柜空空如也——先烤一串试试？</div>';
+      return;
+    }
+    box.innerHTML = "";
+    list.forEach(function(rec, idx){
+      var item = document.createElement("div");
+      item.className = "history-item";
+      var when = new Date(rec.time).toLocaleString("zh-CN", { hour12:false });
+      var modeTxt = rec.mode === "api" ? "真·AI" : "演示";
+      item.innerHTML =
+        '<div class="h-score">' + rec.score + '</div>' +
+        '<div class="h-main"><div class="h-idea"></div><div class="h-meta">' + modeTxt + " · " + rec.tierName + " · " + when + '</div></div>' +
+        '<div class="h-actions">' +
+          '<button type="button" data-act="view">回看</button>' +
+          '<button type="button" data-act="copy">复制</button>' +
+          '<button type="button" data-act="del">删除</button>' +
+        '</div>';
+      item.querySelector(".h-idea").textContent = rec.idea;
+      item.querySelector(".h-idea").title = rec.idea;
+      item.querySelector('[data-act="view"]').addEventListener("click", function(){ viewHistory(idx); });
+      item.querySelector('[data-act="copy"]').addEventListener("click", function(){ copyRecord(rec); });
+      item.querySelector('[data-act="del"]').addEventListener("click", function(){ delHistory(idx); });
+      box.appendChild(item);
+    });
+  }
+  function viewHistory(idx){
+    var list = loadHistory();
+    var rec = list[idx];
+    if (!rec) return;
+    $("historyMask").classList.remove("show");
+    renderRecord(rec);
+    $("verdict").scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block:"start" });
+  }
+  function renderRecord(rec){
+    state.idea = rec.idea; state.mode = rec.mode || "demo";
+    state.score = rec.score;
+    state.v2From = null;
+    state.tier = { name: rec.tierName || "未评级", verdict: rec.verdict || "" };
+    state.dims = Array.isArray(rec.dims) ? rec.dims.slice() : DIMS.map(function(){ return 50; });
+    state.advice = Array.isArray(rec.advice) ? rec.advice.slice() : [];
+    state.serial = rec.serial || 0;
+    state.verdict = rec.verdict || "";
+    state.lines = [];
+
+    var list = $("roastList");
+    list.innerHTML = "";
+    (rec.lines || []).forEach(function(l){
+      var role = null;
+      ROLES.forEach(function(r){ if (r.id === l.id) role = r; });
+      if (!role) return;
+      var block = document.createElement("div");
+      block.className = "role-block on " + role.cls;
+      block.innerHTML =
+        '<div class="role-avatar">' + AVATARS[role.id] +
+          '<span class="role-tag">' + role.tag + '</span></div>' +
+        '<div class="bubble"><div class="who">' + role.tag + '</div><div class="txt"></div><div class="tip"></div></div>';
+      block.querySelector(".txt").textContent = l.text;
+      var tipEl = block.querySelector(".tip");
+      if (l.tip){
+        tipEl.textContent = "💡 建议：" + l.tip;
+        tipEl.classList.add("show");
+      } else {
+        tipEl.style.display = "none";
+      }
+      list.appendChild(block);
+    });
+    $("emptyGrill").style.display = "none";
+    $("grillBar").classList.remove("show");
+    showReport(true);
+  }
+  function delHistory(idx){
+    var list = loadHistory();
+    list.splice(idx, 1);
+    persistHistory(list);
+    renderHistory();
+    toast("已从档案删除", "ok");
+  }
+  function copyRecord(rec){
+    var text =
+      "【idea烤串机 · 存活评估报告】\n" +
+      "受烤想法：" + rec.idea + "\n" +
+      "评级：" + (rec.tierName || "未评级") + "（" + rec.score + " / 100）\n" +
+      DIMS.map(function(d,i){ return d + " " + ((rec.dims||[])[i] || "--"); }).join(" · ") + "\n" +
+      "判词：" + (rec.verdict || "") + "\n" +
+      "改进建议：\n" + (rec.advice||[]).map(function(a,i){ return (i+1) + ". " + a; }).join("\n") + "\n" +
+      "—— idea烤串机现烤出品";
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){ toast("已复制到剪贴板", "ok"); }, function(){ toast("复制失败", "warn"); });
+    } else { toast("复制失败", "warn"); }
+  }
+
+  /* ============ 战绩 / 成就 / 彩带 ============ */
+  var BADGES = [
+    { id:"first",  ico:"🔥", name:"初次上架",   desc:"完成第一次烤制" },
+    { id:"ten",    ico:"🍢", name:"老主顾",     desc:"累计烤满 10 串" },
+    { id:"hell",   ico:"💀", name:"地狱火",     desc:"用地狱火候烤过一次" },
+    { id:"eighty", ico:"🏆", name:"米其林之约", desc:"首次拿到 80+ 分" },
+    { id:"reroll", ico:"🔄", name:"回炉圣手",   desc:"完成第一次回炉重造" },
+    { id:"api",    ico:"🤖", name:"真·AI现烤",  desc:"接入 API 烤过一次" },
+    { id:"share",  ico:"📸", name:"晒串达人",   desc:"下载过一张分享卡" }
+  ];
+  function getTotal(){ try{ return parseInt(localStorage.getItem("bbq_total") || "0", 10) || 0; }catch(e){ return 0; } }
+  function bumpTotal(){ try{ localStorage.setItem("bbq_total", String(getTotal() + 1)); }catch(e){} }
+  function loadBadges(){ try{ return JSON.parse(localStorage.getItem("bbq_badges")) || {}; }catch(e){ return {}; } }
+  function saveBadges(o){ try{ localStorage.setItem("bbq_badges", JSON.stringify(o)); }catch(e){} }
+  function unlockBadge(id){
+    var owned = loadBadges();
+    if (owned[id]) return null;
+    var b = null;
+    BADGES.forEach(function(x){ if (x.id === id) b = x; });
+    if (!b) return null;
+    owned[id] = true;
+    saveBadges(owned);
+    return b;
+  }
+  function checkBadges(){
+    var owned = loadBadges();
+    var total = getTotal();
+    var news = [];
+    BADGES.forEach(function(b){
+      if (owned[b.id]) return;
+      var ok = false;
+      if (b.id === "first")  ok = total >= 1;
+      if (b.id === "ten")    ok = total >= 10;
+      if (b.id === "hell")   ok = heat === "hell";
+      if (b.id === "eighty") ok = state.score >= 80;
+      if (b.id === "reroll") ok = state.v2From != null;
+      if (b.id === "api")    ok = state.mode === "api";
+      if (b.id === "share")  ok = false;
+      if (ok){ owned[b.id] = true; news.push(b); }
+    });
+    if (news.length) saveBadges(owned);
+    return news;
+  }
+  function confetti(){
+    var box = $("confetti");
+    var colors = ["#FF5A2A","#FFC93C","#2FA84F","#2B59D9","#E23D3D","#8A4FD3"];
+    for (var i = 0; i < 60; i++){
+      var el = document.createElement("div");
+      el.className = "confetti-piece";
+      el.style.left = (Math.random() * 100) + "vw";
+      el.style.background = colors[i % colors.length];
+      el.style.animationDuration = (2 + Math.random() * 2) + "s";
+      el.style.animationDelay = (Math.random() * 0.6) + "s";
+      box.appendChild(el);
+    }
+    setTimeout(function(){ box.innerHTML = ""; }, 5000);
+  }
+  function renderStats(){
+    var list = loadHistory();
+    var total = getTotal();
+    var now = new Date(); now.setHours(0, 0, 0, 0);
+    var todayCount = 0, maxScore = 0, maxTier = "";
+    var tierCount = {};
+    TIERS.forEach(function(t){ tierCount[t.name] = 0; });
+    var todayItems = [];
+    list.forEach(function(r){
+      if (!r) return;
+      if (r.time >= now.getTime()){ todayCount++; todayItems.push(r); }
+      if (r.score > maxScore){ maxScore = r.score; maxTier = r.tierName; }
+      if (tierCount[r.tierName] != null) tierCount[r.tierName]++;
+    });
+    if (total < list.length) total = list.length;
+    $("statsCards").innerHTML =
+      '<div class="stat-card"><div class="s-num">' + total + '</div><div class="s-label">累计烤串</div></div>' +
+      '<div class="stat-card"><div class="s-num">' + todayCount + '</div><div class="s-label">今日烤串</div></div>' +
+      '<div class="stat-card"><div class="s-num">' + (maxScore || "--") + '</div><div class="s-label">历史最高' + (maxTier ? " · " + maxTier : "") + '</div></div>';
+    var bars = "";
+    TIERS.forEach(function(t){
+      var c = tierCount[t.name] || 0;
+      var pct = list.length ? Math.round(c / list.length * 100) : 0;
+      bars += '<div class="tier-bar"><span class="t-name">' + t.name + '</span><div class="t-track"><div class="t-fill" style="width:' + pct + '%"></div></div><span class="t-num">' + c + '</span></div>';
+    });
+    $("tierBars").innerHTML = bars;
+    var sorted = todayItems.slice().sort(function(a, b){ return b.score - a.score; }).slice(0, 3);
+    var medals = ["🥇", "🥈", "🥉"];
+    if (!sorted.length){
+      $("podium").innerHTML = '<div class="p-empty">今天还没人上榜，等你来当第一位烧烤师</div>';
+    } else {
+      $("podium").innerHTML = sorted.map(function(r, i){
+        return '<div class="p-item' + (i === 0 ? " p-1" : "") + '"><div class="p-rank">' + medals[i] + '</div><div class="p-idea">' + r.idea + '</div><div class="p-score">' + r.score + ' 分</div></div>';
+      }).join("");
+    }
+    renderBadges(loadBadges());
+  }
+  function renderBadges(owned){
+    var grid = $("badgeGrid");
+    grid.innerHTML = BADGES.map(function(b){
+      var on = !!(owned && owned[b.id]);
+      return '<div class="badge' + (on ? " unlocked" : "") + '"><div class="b-ico">' + b.ico + '</div><div class="b-name">' + b.name + '</div><div class="b-desc">' + b.desc + '</div></div>';
+    }).join("");
+  }
+  $("statsBtn").addEventListener("click", function(){ renderStats(); $("statsMask").classList.add("show"); });
+  $("statsClose").addEventListener("click", function(){ $("statsMask").classList.remove("show"); });
+  $("statsMask").addEventListener("click", function(e){ if (e.target === $("statsMask")) $("statsMask").classList.remove("show"); });
+
+  /* ============ API 设置弹窗 ============ */
+  var settingsMask = $("settingsMask"), historyMask = $("historyMask");
+  function syncModePill(){
+    var cfg = loadConfig();
+    var pill = $("modePill"), txt = $("modePillText");
+    if (cfg && cfg.apiKey){
+      pill.classList.add("online");
+      txt.textContent = "API 在线";
+      pill.title = "已接入 " + (cfg.model || "模型") + "，点击修改";
+    } else {
+      pill.classList.remove("online");
+      txt.textContent = "演示模式";
+      pill.title = "点击配置 API";
+    }
+  }
+  function openSettings(){
+    var cfg = loadConfig();
+    $("cfgBase").value = cfg ? cfg.baseUrl : "https://api.deepseek.com/v1";
+    $("cfgKey").value = cfg ? cfg.apiKey : "";
+    $("cfgModel").value = cfg ? cfg.model : "deepseek-v4-flash";
+    settingsMask.classList.add("show");
+  }
+  $("modePill").addEventListener("click", openSettings);
+  $("historyBtn").addEventListener("click", function(){ renderHistory(); historyMask.classList.add("show"); });
+  $("settingsClose").addEventListener("click", function(){ settingsMask.classList.remove("show"); });
+  $("settingsMask").addEventListener("click", function(e){ if (e.target === settingsMask) settingsMask.classList.remove("show"); });
+  $("historyClose").addEventListener("click", function(){ historyMask.classList.remove("show"); });
+  $("historyMask").addEventListener("click", function(e){ if (e.target === historyMask) historyMask.classList.remove("show"); });
+  $("cfgCancel").addEventListener("click", function(){ settingsMask.classList.remove("show"); });
+  $("cfgClear").addEventListener("click", function(){
+    clearConfig();
+    syncModePill();
+    toast("已清除 API 配置，回到演示模式", "ok");
+    settingsMask.classList.remove("show");
+  });
+  document.querySelectorAll(".preset-btn").forEach(function(b){
+    b.addEventListener("click", function(){
+      var p = PRESETS[b.getAttribute("data-preset")];
+      if (!p) return;
+      $("cfgBase").value = p.base;
+      $("cfgModel").value = p.model;
+    });
+  });
+  $("cfgSave").addEventListener("click", function(){
+    var base = $("cfgBase").value.trim();
+    var key = $("cfgKey").value.trim();
+    var model = $("cfgModel").value.trim();
+    if (!base){ toast("请填写 API 地址", "warn"); return; }
+    if (!key){ toast("请填写 API Key", "warn"); return; }
+    saveConfig({ baseUrl: base.replace(/\/+$/, ""), apiKey: key, model: model || "deepseek-v4-flash" });
+    var btn = $("cfgSave");
+    btn.textContent = "测试中…"; btn.disabled = true;
+    testConnection().then(function(){
+      btn.textContent = "保存并测试"; btn.disabled = false;
+      syncModePill();
+      toast("连接成功，已保存配置，开烤吧！", "ok");
+      settingsMask.classList.remove("show");
+    }).catch(function(err){
+      btn.textContent = "保存并测试"; btn.disabled = false;
+      toast("测试失败：" + friendlyApiError(err) + "（配置已保存，可稍后重试）", "warn");
+    });
+  });
+  document.addEventListener("keydown", function(e){
+    if (e.key === "Escape"){ settingsMask.classList.remove("show"); historyMask.classList.remove("show"); }
+  });
+
+  /* ============ 回炉重造 ============ */
+  var DEMO_DIRECTIONS = {
+    investor: ["把获客路径写清楚，先验证 100 个付费用户再谈放大", "先讲清楚用户现在拿什么凑合解决，再谈融资"],
+    user: ["让注册只要 10 秒，别让我填 8 个字段", "先做我最痛的那一件事，别想覆盖所有场景"],
+    engineer: ["先跑通最小版本，数据哪怕手工录入也别等平台", "把范围砍到只剩核心一环，先上线再说"],
+    legal: ["上线前先把隐私说明和用户授权准备好", "给 AI 生成内容加显著标识，配好投诉通道"],
+    rival: ["别做平台，做单点功能，降低用户迁移成本", "把留存机制设计进第一天，别等第二周腰斩"]
+  };
+  function buildDirectionsPrompt(idea){
+    return "你是 idea 烤串机的五位评委。用户想法：" + idea + "\n\n" +
+      "五位评委（investor 毒舌投资人 / user 真实用户 / engineer 暴躁工程师 / legal 法务 / rival 竞品PM）分别给出一条优化方向，每条 20 字内、口语化、贴合各自身份，不要吐槽，只要可执行建议。\n\n" +
+      '严格只输出 JSON：{"investor":"…","user":"…","engineer":"…","legal":"…","rival":"…"}';
+  }
+  function buildV2Prompt(idea, selected){
+    return "你是 idea 烤串机的产品主厨。用户原始想法：" + idea + "\n\n" +
+      "经过五位评委吐槽后，用户决定吸纳这些改进建议：\n" + selected.map(function(a,i){ return (i+1) + ". " + a; }).join("\n") + "\n\n" +
+      "请把想法改写成一版更可落地的 V2：保留原想法风味，补齐致命短板，聚焦一个核心场景，60 字以内。注意：不要把建议简单拼接在想法末尾，要把建议吸收进产品描述本身（调整定位、砍功能、改用户路径）。\n\n" +
+      '严格只输出 JSON：{"v2":"改写后的产品想法"}';
+  }
+  /* 演示引擎版改写：把吐槽建议吸收进 idea 描述本身，而不是简单拼接 */
+  function demoRewriteV2(idea, sel){
+    var kws = extractKeywords(idea);
+    var kw = kws[0] || "这个场景";
+    var parts = [];
+    (sel || []).forEach(function(a){
+      var t = String(a).replace(/\{kw\}/g, kw).split(/[，。；]/)[0].trim();
+      if (t.length > 16) t = t.slice(0, 16) + "…";
+      if (t) parts.push(t);
+    });
+    if (!parts.length) parts = ["聚焦一个核心场景", "砍掉多余功能"];
+    return "「" + idea + "」V2（已按吐槽修改）：不再贪大，只围绕「" + kw + "」这一个场景做深——" +
+      parts.join("；") + "。用户从打开到完成 ≤3 步，先手工服务 100 个种子用户，跑通验证再谈放大。";
+  }
+  function openReheat(){
+    if (!state.idea){ toast("先烤一串再回炉", "warn"); return; }
+    var pick = $("pickList");
+    pick.innerHTML = "";
+    state.advice.forEach(function(a){
+      var lab = document.createElement("label");
+      lab.className = "pick-item checked";
+      lab.innerHTML = '<input type="checkbox" checked>' + a;
+      var cb = lab.querySelector("input");
+      cb.addEventListener("change", function(){ lab.classList.toggle("checked", cb.checked); });
+      pick.appendChild(lab);
+    });
+    var dir = $("dirList");
+    var cfg = loadConfig();
+    if (cfg && cfg.apiKey){
+      dir.innerHTML = '<div class="dir-item loading">正在向五位评委收集优化方向…</div>';
+      callChat(null, buildDirectionsPrompt(state.idea), 800, 45000).then(function(json){
+        dir.innerHTML = "";
+        ROLES.forEach(function(role){
+          var txt = json[role.id];
+          if (!txt) return;
+          var el = document.createElement("div");
+          el.className = "dir-item";
+          el.innerHTML = '<span class="d-role">' + role.tag.split("·")[1].trim() + '</span><span>' + txt + '</span>';
+          dir.appendChild(el);
+        });
+        if (!dir.children.length) dir.innerHTML = '<div class="dir-item loading">评委今天不太想说话，直接勾选建议吧</div>';
+      }).catch(function(){
+        dir.innerHTML = '<div class="dir-item loading">评委没连上线（API 调用失败），直接勾选建议吧</div>';
+      });
+    } else {
+      dir.innerHTML = "";
+      var seed = hashStr(state.idea);
+      ROLES.forEach(function(role, i){
+        var arr = DEMO_DIRECTIONS[role.id] || ["先聚焦一个核心场景，砍掉花活"];
+        var el = document.createElement("div");
+        el.className = "dir-item";
+        el.innerHTML = '<span class="d-role">' + role.tag.split("·")[1].trim() + '</span><span>' + arr[(seed + i) % arr.length] + '</span>';
+        dir.appendChild(el);
+      });
+    }
+    $("reheatMask").classList.add("show");
+  }
+  function selectedAdvice(){
+    var out = [];
+    var cbs = $("pickList").querySelectorAll("input:checked");
+    cbs.forEach(function(cb){ out.push(cb.closest(".pick-item").textContent.trim()); });
+    return out;
+  }
+  $("reheatBtn").addEventListener("click", openReheat);
+  $("reheatClose").addEventListener("click", function(){ $("reheatMask").classList.remove("show"); });
+  $("reheatCancel").addEventListener("click", function(){ $("reheatMask").classList.remove("show"); });
+  $("reheatMask").addEventListener("click", function(e){ if (e.target === $("reheatMask")) $("reheatMask").classList.remove("show"); });
+  $("reheatGo").addEventListener("click", function(){
+    var sel = selectedAdvice();
+    if (!sel.length){ toast("至少勾选一条建议", "warn"); return; }
+    var btn = $("reheatGo");
+    btn.textContent = "正在改写 V2…"; btn.disabled = true;
+    var finish = function(v2){
+      $("reheatMask").classList.remove("show");
+      btn.textContent = "生成 V2 · 回炉重烤"; btn.disabled = false;
+      state.v2From = state.score;
+      state.pendingV2 = true;
+      startRoast(v2);
+    };
+    var cfg = loadConfig();
+    if (cfg && cfg.apiKey){
+      callChat(null, buildV2Prompt(state.idea, sel), 800, 45000).then(function(json){
+        finish(json.v2 || demoRewriteV2(state.idea, sel));
+      }).catch(function(){
+        btn.textContent = "生成 V2 · 回炉重烤"; btn.disabled = false;
+        toast("AI 改写失败，已用演示引擎生成 V2", "warn");
+        finish(demoRewriteV2(state.idea, sel));
+      });
+    } else {
+      finish(demoRewriteV2(state.idea, sel));
+    }
+  });
+
+  /* ============ 落地问诊（向导式，先定方向再出提示词） ============ */
+  var landing = { open:false, qs:[], step:-1, answers:[], recs:null };
+  function escHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function copyText(text, okMsg){
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){ toast(okMsg || "已复制", "ok"); }, function(){ toast("复制失败", "warn"); });
+    } else { toast("复制失败", "warn"); }
+  }
+  function downloadText(text, name){
+    try{
+      var blob = new Blob([text], { type:"text/plain;charset=utf-8" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      toast("已下载 .txt", "ok");
+    }catch(e){ toast("下载失败", "warn"); }
+  }
+
+  var LQ_USER = {
+    key:"user", label:"目标用户",
+    q:"第一版先服务谁？",
+    options:["被「{kw}」困扰最深的 100 个种子用户","愿意为尝鲜买单的早期用户","先用朋友/同事当小白鼠","直接面向大众市场"]
+  };
+  var LQ_SCENE = {
+    key:"scene", label:"核心场景",
+    q:"用户会在哪一刻打开你的产品？",
+    options:["遇到「{kw}」问题的那一刻","固定时间习惯性打开（睡前/通勤）","有提醒/通知时才想起","被种草后主动来搜"]
+  };
+  var LQ_POOL = [
+    { key:"moat", label:"壁垒策略", dim:"护城河",
+      q:"打算怎么建立自己的护城河？",
+      options:["积累独家数据","做内容/模板生态","先靠速度抢占心智","第一版不设防，先验证需求"] },
+    { key:"model", label:"商业模式", dim:"商业模式",
+      q:"靠什么赚钱？",
+      options:["订阅制（按月付费）","按次付费/单功能付费","免费 + 广告/导流","第一版先不赚钱，只看留存"] },
+    { key:"tech", label:"技术选型", dim:"技术可行性",
+      q:"技术方案怎么落地？",
+      options:["用现成 AI API 快速搭建","自研核心 + 开源组件","低代码/无代码工具","外包一个 MVP"] },
+    { key:"launch", label:"上线策略", dim:"抗喷度",
+      q:"打算怎么上线？",
+      options:["内测邀请制，先攒口碑","直接公开上线","先发小红书/即刻预告造势","找 KOL 首发测评"] }
+  ];
+  /* 创意优化题库（第一阶段：先打磨点子本身） */
+  var IDEA_QPOOL = [
+    { key:"value", label:"核心爽点",
+      q:"这个点子最让人上头的点是什么？",
+      options:["解决一个真痛点，用了就回不去","纯属好玩，图一乐","提供情绪价值，发朋友圈有面子","仪式感拉满，治愈强迫症"] },
+    { key:"pain", label:"痛点场景",
+      q:"这个点子最该对准的「痛点 / 痒点」是哪一个？",
+      options:["高频发生的烦心事","偶尔但极痛的瞬间","纯好奇驱动的痒点","懒得动但想变好的愿望"] },
+    { key:"focus", label:"取舍聚焦",
+      q:"如果只能保留一个核心，你砍掉谁？",
+      options:["砍掉花活，只留最核心的功能","砍掉复杂，做得又轻又怪","砍掉通用性，做得极窄极深","砍掉免费，直接做成付费小工具"] },
+    { key:"memory", label:"记忆点",
+      q:"怎么让人第一次听就记住它？",
+      options:["起一个拟人化的怪名字","内置一个反常识彩蛋","用谐音梗/方言梗做包装","把界面做到极致极简"] },
+    { key:"wow", label:"反差卖点",
+      q:"给它加一个什么「反差」会更讨喜？",
+      options:["用最严肃的姿势做最离谱的事","用可爱的皮包着扎心的功能","免费工具 + 离谱的会员彩蛋","极简到只有一句话的界面"] }
+  ];
+  var A_MAP = {
+    user: {
+      "被「{kw}」困扰最深的 100 个种子用户":"被「{kw}」困扰最深的 100 个种子用户（痛点明确、转化快）",
+      "愿意为尝鲜买单的早期用户":"愿意为尝鲜买单的早期用户（价格敏感度低）",
+      "先用朋友/同事当小白鼠":"先服务朋友/同事 ≤20 人做灰度验证",
+      "直接面向大众市场":"直接面向大众市场（需强冷启动，风险高）"
+    },
+    scene: {
+      "遇到「{kw}」问题的那一刻":"高频刚需时刻：遇到「{kw}」问题即刻打开，3 步内完成",
+      "固定时间习惯性打开（睡前/通勤）":"习惯性时刻（睡前/通勤），做轻量每日任务",
+      "有提醒/通知时才想起":"提醒驱动型，靠推送与日历场景拉活",
+      "被种草后主动来搜":"种草后主动搜索，重点做落地页与首次体验"
+    },
+    moat: {
+      "积累独家数据":"壁垒：独家数据积累，从第一天埋点",
+      "做内容/模板生态":"壁垒：内容/模板生态，鼓励 UGC",
+      "先靠速度抢占心智":"壁垒：速度优先，3 周内上线抢心智",
+      "第一版不设防，先验证需求":"壁垒：第一版不设防，先验证需求真实"
+    },
+    model: {
+      "订阅制（按月付费）":"商业模式：订阅制按月付费，免费试用 7 天",
+      "按次付费/单功能付费":"商业模式：按次/单功能付费，降低决策门槛",
+      "免费 + 广告/导流":"商业模式：免费 + 广告/导流，先冲规模",
+      "第一版先不赚钱，只看留存":"商业模式：第一版不赚钱，只看留存与复访"
+    },
+    tech: {
+      "用现成 AI API 快速搭建":"技术：现成 AI API 快速搭建，最快一周上线",
+      "自研核心 + 开源组件":"技术：自研核心算法 + 开源组件",
+      "低代码/无代码工具":"技术：低代码/无代码工具快速出原型",
+      "外包一个 MVP":"技术：外包 MVP，自留产品与数据"
+    },
+    launch: {
+      "内测邀请制，先攒口碑":"上线：内测邀请制，先攒口碑再放量",
+      "直接公开上线":"上线：直接公开上线，接受差评快速迭代",
+      "先发小红书/即刻预告造势":"上线：先发小红书/即刻预告造势",
+      "找 KOL 首发测评":"上线：找 KOL 首发测评，借势冷启动"
+    },
+    value: {
+      "解决一个真痛点，用了就回不去":"创意：主打真痛点，把「用了就回不去」的体验做透",
+      "纯属好玩，图一乐":"创意：定位纯娱乐轻应用，低压力、高传播",
+      "提供情绪价值，发朋友圈有面子":"创意：主打情绪价值与社交货币，天然自带传播",
+      "仪式感拉满，治愈强迫症":"创意：仪式感与治愈向，细节打磨是核心卖点"
+    },
+    focus: {
+      "砍掉花活，只留最核心的功能":"创意取舍：砍掉花活，只保留最核心的一个功能",
+      "砍掉复杂，做得又轻又怪":"创意取舍：极致轻量，允许「怪」但绝不允许「重」",
+      "砍掉通用性，做得极窄极深":"创意取舍：只服务一个极窄场景，做到极致",
+      "砍掉免费，直接做成付费小工具":"创意取舍：直接做付费小工具，用价格筛选用户"
+    },
+    memory: {
+      "起一个拟人化的怪名字":"创意记忆点：拟人化怪名字，强化口头传播",
+      "内置一个反常识彩蛋":"创意记忆点：内置反常识彩蛋，制造分享话题",
+      "用谐音梗/方言梗做包装":"创意记忆点：谐音梗/方言梗包装，接地气易传播",
+      "把界面做到极致极简":"创意记忆点：极致极简界面，靠设计感出圈"
+    },
+    pain: {
+      "高频发生的烦心事":"创意痛点：对准高频烦心事，建立「每天都会用」的钩子",
+      "偶尔但极痛的瞬间":"创意痛点：抓住偶尔但极痛的瞬间，做「救场神器」",
+      "纯好奇驱动的痒点":"创意痛点：定位好奇驱动的痒点，靠新鲜感引流",
+      "懒得动但想变好的愿望":"创意痛点：服务「懒得动但想变好」的愿望，做轻量代劳"
+    },
+    wow: {
+      "用最严肃的姿势做最离谱的事":"反差卖点：严肃包装 + 离谱内核，制造错位幽默",
+      "用可爱的皮包着扎心的功能":"反差卖点：可爱外观 + 扎心功能，反差萌",
+      "免费工具 + 离谱的会员彩蛋":"反差卖点：免费核心 + 离谱会员彩蛋，制造话题",
+      "极简到只有一句话的界面":"反差卖点：一句话极简界面，靠克制出圈"
+    }
+  };
+
+  function weakestDim(){
+    var wi = 0;
+    state.dims.forEach(function(v, i){ if (v < state.dims[wi]) wi = i; });
+    return { index: wi, name: DIMS[wi], score: state.dims[wi] };
+  }
+  function buildLandingQuestions(){
+    var kws = extractKeywords(state.idea);
+    var kw = kws[0] || "这个场景";
+    return [LQ_USER, LQ_SCENE].map(function(q){
+      return {
+        key: q.key, label: q.label,
+        q: q.q.replace(/\{kw\}/g, kw),
+        options: q.options.map(function(o){ return o.replace(/\{kw\}/g, kw); })
+      };
+    });
+  }
+  function buildIdeaQuestions(){
+    return IDEA_QPOOL.map(function(q){
+      return { phase:"idea", key:q.key, label:q.label, q:q.q, options:q.options.slice() };
+    });
+  }
+  function buildWizardQuestions(){
+    var landingQs = buildLandingQuestions();
+    landingQs.forEach(function(q){ q.phase = "landing"; });
+    return buildIdeaQuestions().concat(landingQs);
+  }
+  function buildRecsPromptApi(){
+    var lines = [
+      "你是产品创意顾问。用户的想法：" + state.idea + "。",
+      "五位评委的改进建议：" + state.advice.map(function(a, i){ return (i+1) + ". " + a; }).join(" "),
+      "下面是落地问诊的 " + landing.qs.length + " 个问题（前 5 个是创意优化，后 2 个是落地决策）。请综合想法特点与评委建议，为每个问题推荐 1 个最合适的选项（返回该选项的下标 0-3）：",
+      ""
+    ];
+    landing.qs.forEach(function(q, i){
+      lines.push((i+1) + ". " + q.label + "：" + q.q);
+      q.options.forEach(function(o, j){ lines.push("   " + j + ") " + o); });
+    });
+    lines.push("", '严格只输出 JSON：{"recs":[0,1,2,3,0,1,2]}（共 ' + landing.qs.length + ' 个下标，与问题顺序一一对应）');
+    return lines.join("\n");
+  }
+  function buildLandingPrompt(idea, answers){
+    var kws = extractKeywords(idea);
+    var kw = kws[0] || "这个场景";
+    var w = weakestDim();
+    var adv = state.advice.slice(0, 3);
+    while (adv.length < 3) adv.push("先聚焦一个核心场景，砍掉多余功能");
+    var lines = [
+      "你是一名资深全栈工程师 + 产品设计师。请根据下面这份「已被五位评委吐槽改进」的需求，直接生成一个可运行的 MVP：",
+      "",
+      "【产品一句话定位】" + idea,
+      "【核心功能清单（按优先级）】",
+      "1. " + adv[0],
+      "2. " + adv[1],
+      "3. " + adv[2],
+      "【MVP 边界】只做以上 3 条，不做社区 / 会员体系 / 多端同步",
+      "【当前短板（改进重点）】「" + w.name + "」维度得分最低（" + w.score + "/100），方案里必须给出应对",
+      "【合规提示】上线前补隐私说明、AI 内容显著标识、投诉反馈通道",
+      "【验收标准】注册 ≤10 秒；从打开到完成核心操作 ≤3 步；手机端优先",
+      "【风格】中文界面、克制简洁；禁止「赋能/抓手/闭环」式空话"
+    ];
+    var ideaDec = [];
+    var landDec = [];
+    (answers || []).forEach(function(x){
+      var m = A_MAP[x.key] && A_MAP[x.key][x.answer];
+      if (!m) return;
+      if (x.phase === "idea") ideaDec.push("- " + m);
+      else landDec.push("- " + m);
+    });
+    if (ideaDec.length){
+      lines.push("", "【创意优化决策】");
+      ideaDec.forEach(function(d){ lines.push(d); });
+    }
+    if (landDec.length){
+      lines.push("", "【已确认的落地决策】");
+      landDec.forEach(function(d){ lines.push(d); });
+    }
+    lines.push("", "请直接输出：技术栈选型 → 页面结构 → 核心代码 → 部署上线清单。");
+    return lines.join("\n");
+  }
+  function buildLandingPromptApi(idea, answers){
+    var qa = (answers || []).map(function(x){ return "问：" + x.q + "\n答：" + x.answer; }).join("\n\n");
+    return "你是产品落地顾问。用户的想法：" + idea + "\n\n" +
+      "评委改进建议：" + state.advice.map(function(a, i){ return (i+1) + ". " + a; }).join("\n") + "\n\n" +
+      "用户经过落地问诊后确认的决策：\n" + qa + "\n\n" +
+      "请产出一段可直接交付给 AI 编程/设计工具（Cursor / v0 / Bolt）的「产品落地提示词」，Markdown 分节：产品定位、目标用户、核心场景、功能清单（含优先级）、MVP 边界、技术选型、商业模式、上线策略、验收标准、风险与合规提示。500 字以内。\n\n" +
+      '严格只输出 JSON：{"prompt":"完整的落地提示词"}';
+  }
+
+  function renderLandingIntro(loading){
+    var panel = $("landingPanel");
+    if (loading){
+      panel.innerHTML = '<div class="lp-head"><span class="lp-kicker">落地问诊</span><h4>正在请大模型为每问推荐选项…</h4></div>' +
+        '<div class="lp-center">🤔 大模型正在结合评委建议选「✨ 推荐」，约需 10~20 秒…</div>';
+      return;
+    }
+    var w = weakestDim();
+    var ideaCount = 0, landCount = 0;
+    landing.qs.forEach(function(x){ if (x.phase === "idea") ideaCount++; else landCount++; });
+    var recNote = (loadConfig() && loadConfig().apiKey)
+      ? ' <b>每问都会标注 ✨ 大模型推荐选项</b>（也可以不跟）。'
+      : '';
+    panel.innerHTML =
+      '<div class="lp-head"><span class="lp-kicker">落地问诊</span><h4>先打磨创意，再定方向</h4></div>' +
+      '<div class="lp-summary"><p><b>五位评委的共识：</b>你的「<span class="hl">' + w.name + '</span>」维度最弱（' + w.score + '/100）。' +
+      escHtml(state.advice[0] || "建议先聚焦一个核心场景，砍掉多余功能") + '</p></div>' +
+      '<p class="lp-tip">问诊分两步：先 <b>' + ideaCount + '</b> 轮<b>创意优化</b>把点子本身打磨到位（爽点 / 痛点 / 取舍 / 记忆点 / 反差），再 <b>' + landCount + '</b> 轮<b>落地决策</b>把「给谁用、在哪用」定下来。' + recNote + '选完就生成对应版本的落地提示词。</p>' +
+      '<button class="btn btn-primary" id="lpStart" type="button">开始问诊 →</button>';
+  }
+  function renderLandingStep(i){
+    var panel = $("landingPanel");
+    var q = landing.qs[i];
+    var phaseName = q.phase === "idea" ? "创意优化" : "落地优化";
+    var phaseIdx = 0;
+    for (var m = 0; m < i; m++){ if (landing.qs[m].phase === q.phase) phaseIdx++; }
+    var phaseTotal = 0;
+    landing.qs.forEach(function(x){ if (x.phase === q.phase) phaseTotal++; });
+    var dots = "";
+    for (var k = 0; k < phaseTotal; k++){
+      dots += '<span class="lp-dot' + (k < phaseIdx ? " done" : (k === phaseIdx ? " on" : "")) + '"></span>';
+    }
+    var recIdx = (landing.recs && landing.recs[i] != null && landing.recs[i] >= 0 && landing.recs[i] < q.options.length)
+      ? landing.recs[i] : -1;
+    var opts = q.options.map(function(o, j){
+      var badge = (j === recIdx) ? '<span class="lp-rec">✨ 推荐</span>' : "";
+      return '<button type="button" class="lp-opt' + (j === recIdx ? " rec" : "") + '">' + escHtml(o) + badge + '</button>';
+    }).join("");
+    var divider = (q.phase === "landing" && phaseIdx === 0) ? '<div class="lp-divider">✅ 创意打磨完成 · 进入落地优化</div>' : "";
+    panel.innerHTML =
+      '<div class="lp-head"><span class="lp-kicker">' + phaseName + '</span><h4>第 ' + (phaseIdx+1) + '/' + phaseTotal + ' 问 · ' + q.label + '</h4><div class="lp-dots">' + dots + '</div></div>' +
+      divider +
+      '<p class="lp-q">' + escHtml(q.q) + '</p>' +
+      '<div class="lp-opts">' + opts + '</div>' +
+      (i > 0 ? '<button class="btn btn-ghost" id="lpPrev" type="button">← 上一步</button>' : '');
+  }
+  function showLandingResult(prompt){
+    var panel = $("landingPanel");
+    var ideaCount = 0, landCount = 0;
+    landing.answers.forEach(function(x){ if (x.phase === "idea") ideaCount++; else landCount++; });
+    panel.innerHTML =
+      '<div class="lp-head"><span class="lp-kicker">问诊完成</span><h4>✅ 落地提示词已出炉</h4></div>' +
+      '<p class="lp-tip">把这整段复制给 AI 编程 / 设计工具（Cursor、v0、Bolt、即梦…）即可开烤 MVP。已吸收吐槽 + ' + ideaCount + ' 轮创意优化 + ' + landCount + ' 轮落地决策。</p>' +
+      '<div class="landing-box"><pre id="lpResultText">' + escHtml(prompt) + '</pre></div>' +
+      '<div class="modal-actions">' +
+        '<button class="btn btn-primary" id="lpCopy" type="button">复制提示词</button>' +
+        '<button class="btn btn-ghost" id="lpDownload" type="button">下载 .txt</button>' +
+        '<button class="btn btn-ghost" id="lpRestart" type="button">重新问诊</button>' +
+        '<button class="btn btn-ghost" id="lpClose" type="button">收起</button>' +
+      '</div>';
+  }
+  function startLandingWizard(){
+    landing.answers = [];
+    landing.step = -1;
+    landing.qs = buildWizardQuestions();
+    landing.recs = null;
+    var cfg = loadConfig();
+    if (cfg && cfg.apiKey){
+      renderLandingIntro(true);
+      callChat(null, buildRecsPromptApi(), 800, 60000).then(function(json){
+        landing.recs = (json && Array.isArray(json.recs) && json.recs.length >= landing.qs.length)
+          ? json.recs.slice(0, landing.qs.length) : null;
+        renderLandingIntro(false);
+      }).catch(function(){
+        renderLandingIntro(false);
+      });
+    } else {
+      renderLandingIntro(false);
+    }
+  }
+  function generateLanding(){
+    var panel = $("landingPanel");
+    panel.innerHTML = '<div class="lp-head"><span class="lp-kicker">落地问诊</span><h4>正在综合你的选择…</h4></div>' +
+      '<div class="lp-center">🔥 正在把吐槽 + 你的决策揉进落地提示词，约需 15~30 秒…</div>';
+    var cfg = loadConfig();
+    var demo = function(){ showLandingResult(buildLandingPrompt(state.idea, landing.answers)); };
+    if (cfg && cfg.apiKey){
+      callChat(null, buildLandingPromptApi(state.idea, landing.answers), 1400, 90000).then(function(json){
+        if (json && json.prompt) showLandingResult(json.prompt);
+        else demo();
+      }).catch(function(){
+        toast("AI 生成失败，已用演示引擎生成", "warn");
+        demo();
+      });
+    } else {
+      demo();
+    }
+  }
+  function openLanding(){
+    if (!state.idea){ toast("先烤一串再落地", "warn"); return; }
+    var panel = $("landingPanel");
+    panel.hidden = false;
+    landing.open = true;
+    if (landing.qs.length === 0) startLandingWizard();
+    else if (landing.step >= 0) renderLandingStep(landing.step);
+    else renderLandingIntro(false);
+    panel.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block:"nearest" });
+  }
+  $("landingBtn").addEventListener("click", openLanding);
+  $("landingPanel").addEventListener("click", function(e){
+    var t = e.target;
+    if (t.id === "lpStart"){ landing.step = 0; renderLandingStep(0); }
+    else if (t.classList && t.classList.contains("lp-opt")){
+      var q = landing.qs[landing.step];
+      landing.answers[landing.step] = {
+        key: q.key || ("q" + (landing.step + 1)),
+        label: q.label || ("第" + (landing.step + 1) + "问"),
+        q: q.q, answer: t.textContent, phase: q.phase
+      };
+      $("landingPanel").querySelectorAll(".lp-opt").forEach(function(o){ o.classList.remove("sel"); });
+      t.classList.add("sel");
+      setTimeout(function(){
+        if (landing.step + 1 < landing.qs.length){ landing.step++; renderLandingStep(landing.step); }
+        else { generateLanding(); }
+      }, 380);
+    }
+    else if (t.id === "lpPrev"){ if (landing.step > 0){ landing.step--; renderLandingStep(landing.step); } }
+    else if (t.id === "lpRestart"){ startLandingWizard(); }
+    else if (t.id === "lpCopy"){
+      var r = $("landingPanel").querySelector("#lpResultText");
+      if (r) copyText(r.textContent, "落地提示词已复制");
+    }
+    else if (t.id === "lpDownload"){
+      var r2 = $("landingPanel").querySelector("#lpResultText");
+      if (r2) downloadText(r2.textContent, "idea-landing-prompt.txt");
+    }
+    else if (t.id === "lpClose"){ $("landingPanel").hidden = true; landing.open = false; landing.qs = []; landing.answers = []; }
+  });
+
+  /* ============ 分享卡 ============ */
+  $("shareBtn").addEventListener("click", function(){
+    if (!state.idea){ toast("先烤一串再分享吧", "warn"); return; }
+    toast("正在装盘…");
+    setTimeout(drawShareCard, 80);
+  });
+
+  function drawShareCard(){
+    var W = 1080, H = 1440;
+    var c = document.createElement("canvas");
+    c.width = W; c.height = H;
+    var g = c.getContext("2d");
+
+    g.fillStyle = "#FFF6E6";
+    g.fillRect(0, 0, W, H);
+    g.fillStyle = "rgba(36,26,16,.07)";
+    for (var px = 24; px < W; px += 46){
+      for (var py = 24; py < H; py += 46){
+        g.beginPath(); g.arc(px, py, 3, 0, Math.PI * 2); g.fill();
+      }
+    }
+    g.strokeStyle = "#241A10"; g.lineWidth = 10; g.lineJoin = "round";
+    g.strokeRect(26, 26, W - 52, H - 52);
+
+    g.textAlign = "center";
+    g.fillStyle = "#241A10";
+    g.font = "400 64px 'ZCOOL KuaiLe','Noto Sans SC',sans-serif";
+    g.fillText("idea烤串机 · 存活评估报告", W / 2, 150);
+    g.font = "400 34px 'Noto Sans SC',sans-serif";
+    g.fillStyle = "rgba(36,26,16,.6)";
+    g.fillText("编号 BBQ-" + state.serial + " · " + todayStr(), W / 2, 205);
+
+    g.fillStyle = "#FFFDF7";
+    g.strokeStyle = "#241A10"; g.lineWidth = 6;
+    roundRect(g, 90, 260, W - 180, 170, 24); g.fill(); g.stroke();
+    g.fillStyle = "#241A10";
+    g.font = "700 38px 'Noto Sans SC',sans-serif";
+    g.textAlign = "left";
+    wrapText(g, "受烤想法：" + state.idea, 130, 330, W - 260, 46, 38);
+    g.textAlign = "center";
+
+    g.fillStyle = "#FF5A2A";
+    g.font = "400 190px 'ZCOOL KuaiLe','Noto Sans SC',sans-serif";
+    g.fillText(String(state.score), W / 2, 640);
+    g.fillStyle = "rgba(36,26,16,.55)";
+    g.font = "400 44px 'Noto Sans SC',sans-serif";
+    g.fillText("/ 100 · 综合存活分", W / 2, 700);
+
+    g.save();
+    g.translate(W - 190, 300);
+    g.rotate(12 * Math.PI / 180);
+    g.strokeStyle = "#E23D3D"; g.lineWidth = 8;
+    g.beginPath(); g.arc(0, 0, 92, 0, Math.PI * 2); g.stroke();
+    g.fillStyle = "#E23D3D";
+    g.font = "400 46px 'ZCOOL KuaiLe',sans-serif";
+    g.fillText(state.tier.name, 0, 16);
+    g.restore();
+
+    var cx = W / 2, cy = 900, R = 240, n = state.dims.length;
+    g.strokeStyle = "rgba(36,26,16,.2)"; g.lineWidth = 3;
+    [0.33, 0.66, 1].forEach(function(k){
+      g.beginPath();
+      for (var i = 0; i <= n; i++){
+        var a = -Math.PI / 2 + i * 2 * Math.PI / n;
+        var x = cx + R * k * Math.cos(a), y = cy + R * k * Math.sin(a);
+        i ? g.lineTo(x, y) : g.moveTo(x, y);
+      }
+      g.stroke();
+    });
+    for (var j = 0; j < n; j++){
+      var a2 = -Math.PI / 2 + j * 2 * Math.PI / n;
+      g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + R * Math.cos(a2), cy + R * Math.sin(a2)); g.stroke();
+    }
+    g.beginPath();
+    for (var k2 = 0; k2 <= n; k2++){
+      var a3 = -Math.PI / 2 + k2 * 2 * Math.PI / n;
+      var v = state.dims[k2 % n] / 100;
+      var x2 = cx + R * Math.max(0.12, v) * Math.cos(a3), y2 = cy + R * Math.max(0.12, v) * Math.sin(a3);
+      k2 ? g.lineTo(x2, y2) : g.moveTo(x2, y2);
+    }
+    g.fillStyle = "rgba(255,90,42,.26)"; g.fill();
+    g.strokeStyle = "#FF5A2A"; g.lineWidth = 8; g.stroke();
+    g.fillStyle = "#241A10";
+    g.font = "700 30px 'Noto Sans SC',sans-serif";
+    DIMS.forEach(function(label, i){
+      var a4 = -Math.PI / 2 + i * 2 * Math.PI / n;
+      var tx = cx + (R + 54) * Math.cos(a4), ty = cy + (R + 54) * Math.sin(a4);
+      var anchor = Math.abs(tx - cx) < 30 ? "center" : (tx > cx ? "left" : "right");
+      g.textAlign = anchor;
+      g.fillText(label + " " + state.dims[i], tx, ty + 10);
+    });
+    g.textAlign = "center";
+
+    g.fillStyle = "rgba(255,201,60,.35)";
+    roundRect(g, 90, 1165, W - 180, 120, 22); g.fill();
+    g.strokeStyle = "#241A10"; g.lineWidth = 6;
+    roundRect(g, 90, 1165, W - 180, 120, 22); g.stroke();
+    g.fillStyle = "#241A10";
+    g.font = "400 36px 'Noto Sans SC',sans-serif";
+    wrapText(g, "主厨判词：" + (state.verdict || state.tier.verdict), 130, 1225, W - 260, 46, 36);
+
+    g.fillStyle = "rgba(36,26,16,.55)";
+    g.font = "400 30px 'Noto Sans SC',sans-serif";
+    g.fillText("本报告不构成任何投资建议，但构成谈资 · 由 idea烤串机现烤出品", W / 2, 1360);
+
+    try{
+      var link = document.createElement("a");
+      link.download = "bbq-report-" + state.serial + ".png";
+      link.href = c.toDataURL("image/png");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast("分享卡已下载", "ok");
+      var b = unlockBadge("share");
+      if (b) toast("解锁成就：" + b.ico + " " + b.name, "ok");
+    }catch(e){
+      toast("生成分享卡失败", "warn");
+    }
+  }
+
+  function roundRect(g, x, y, w, h, r){
+    g.beginPath();
+    g.moveTo(x + r, y);
+    g.arcTo(x + w, y, x + w, y + h, r);
+    g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r);
+    g.arcTo(x, y, x + w, y, r);
+    g.closePath();
+  }
+  function wrapText(g, text, x, y, maxW, lineH, fontSize){
+    var chars = String(text).split("");
+    var line = "", yy = y;
+    chars.forEach(function(ch){
+      var test = line + ch;
+      if (g.measureText(test).width > maxW && line){
+        g.fillText(line, x, yy);
+        line = ch; yy += lineH;
+      } else { line = test; }
+    });
+    if (line) g.fillText(line, x, yy);
+  }
+
+  /* ============ toast ============ */
+  var toastTimer = null;
+  function toast(msg, type){
+    var t = $("toast");
+    t.textContent = msg;
+    t.className = "toast show" + (type ? " " + type : "");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ t.className = "toast"; }, 2800);
+  }
+
+  /* ============ 初始化 ============ */
+  refreshChips();
+  syncModePill();
+  applyTheme(loadTheme());
+  renderJudgeCards();
+})();
+</script>
+</body>
+</html>
