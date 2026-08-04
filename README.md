@@ -49,22 +49,6 @@
 > DeepSeek 预设：`https://api.deepseek.com/v1` + `deepseek-v4-flash`（或更稳的 `deepseek-v4-pro` / `deepseek-chat`）。
 > 一次完整烤制需生成 5 段发言 + 打分，约 15~40 秒属正常；境外接口（如 OpenAI）在国内直连需代理。
 
-## 📦 部署到 GitHub Pages
-
-本项目为纯静态站点，部署只需 3 个文件（`index.html` / `.nojekyll` / `README.md`），推荐直接使用本仓库的 `github-pages/` 目录：
-
-1. GitHub 新建仓库 → `Add file → Upload files` 上传这 3 个文件
-2. 仓库 `Settings → Pages` → Source 选 **Deploy from a branch** → 分支 `main`、目录 `/ (root)` → Save
-3. 等 1~2 分钟，访问 `https://<用户名>.github.io/<仓库名>/`
-
-或命令行方式：
-
-```bash
-git init && git add . && git commit -m "deploy idea-bbq" && git branch -M main
-git remote add origin https://github.com/<用户名>/<仓库名>.git
-git push -u origin main
-```
-
 ## 🧠 设计理念
 
 这个项目本身也是一次产品实验：
@@ -73,15 +57,6 @@ git push -u origin main
 - **批评必须可验证、可回应**：每条吐槽强制引用原话关键词，这是「烤」和「喷」的分界线
 - **情绪负责氛围，信息必须来自结构**：脾气可以暴躁，内容必须落到具体维度
 - **问答即优化**：落地问诊的每一轮选择，都是在帮你把模糊的想法变成可执行的产品决策
-
-## 📁 项目结构
-
-```
-├── index.html       # 全部代码（154KB，自包含单文件）
-├── .nojekyll        # 防止 GitHub Pages 走 Jekyll 构建
-├── README.md        # 本文件
-└── github-pages/    # 可直接推送 GitHub Pages 的部署包
-```
 
 ## ❓ 常见问题
 
