@@ -2409,19 +2409,15 @@
     landingQs.forEach(function(q){ q.phase = "landing"; });
     return buildIdeaQuestions().concat(landingQs);
   }
-  function buildRecsPromptApi(){
-    var lines = [
-      "你是产品创意顾问。用户的想法：" + state.idea + "。",
-      "五位评委的改进建议：" + state.advice.map(function(a, i){ return (i+1) + ". " + a; }).join(" "),
-      "下面是落地问诊的 " + landing.qs.length + " 个问题（前 5 个是创意优化，后 2 个是落地决策）。请综合想法特点与评委建议，为每个问题推荐 1 个最合适的选项（返回该选项的下标 0-3）：",
-      ""
-    ];
-    landing.qs.forEach(function(q, i){
-      lines.push((i+1) + ". " + q.label + "：" + q.q);
-      q.options.forEach(function(o, j){ lines.push("   " + j + ") " + o); });
-    });
-    lines.push("", '严格只输出 JSON：{"recs":[0,1,2,3,0,1,2]}（共 ' + landing.qs.length + ' 个下标，与问题顺序一一对应）');
-    return lines.join("\n");
+  function buildWizardPromptApi(){
+    return "你是产品创意顾问。用户的想法（刚被五位评委吐槽过）：" + state.idea + "\n\n" +
+      "评委维度得分：" + DIMS.map(function(d, i){ return d + " " + state.dims[i]; }).join("、") + "。\n" +
+      "评委改进建议：" + state.advice.map(function(a, i){ return (i+1) + ". " + a; }).join("\n") + "\n\n" +
+      "请为这个想法量身设计一份「落地问诊」问卷，共 7 个问题：\n" +
+      "【前 5 个是创意优化问题】必须针对这个想法本身提出，从 5 个互不重复的角度推动 idea 优化（例如：目标人群适配、核心价值主张、最该砍掉的冗余、差异化亮点、传播记忆点等，可根据想法特点自选更贴切的角度）；问题要引用想法里的具体内容、直指它的薄弱处，绝不能是套在任何想法上都能用的通用问题，必须起到优化这个 idea 的作用。\n" +
+      "【后 2 个是落地决策问题】围绕把想法落成产品最关键的两件事（如目标用户、核心使用场景）提出。\n\n" +
+      "每个问题给 4 个具体、口语化、可执行的选项，并用 rec 给出你认为最合适的选项下标（0-3）。\n\n" +
+      '严格只输出 JSON：{"questions":[{"key":"q1","label":"角度名","q":"问题","options":["选项1","选项2","选项3","选项4"],"rec":0}...共7个]}';
   }
   function buildLandingPrompt(idea, answers){
     var kws = extractKeywords(idea);
@@ -2447,9 +2443,15 @@
     var landDec = [];
     (answers || []).forEach(function(x){
       var m = A_MAP[x.key] && A_MAP[x.key][x.answer];
-      if (!m) return;
-      if (x.phase === "idea") ideaDec.push("- " + m);
-      else landDec.push("- " + m);
+      if (m){
+        if (x.phase === "idea") ideaDec.push("- " + m);
+        else landDec.push("- " + m);
+      } else if (x.answer){
+        // LLM 动态出的题不在预设映射里：直接列出问答，信息不丢
+        var line = "- " + x.label + "：" + x.answer;
+        if (x.phase === "idea") ideaDec.push(line);
+        else landDec.push(line);
+      }
     });
     if (ideaDec.length){
       lines.push("", "【创意优化决策】");
@@ -2474,27 +2476,27 @@
   function renderLandingIntro(loading){
     var panel = $("landingPanel");
     if (loading){
-      panel.innerHTML = '<div class="lp-head"><span class="lp-kicker">落地问诊</span><h4>正在请大模型为每问推荐选项…</h4></div>' +
-        '<div class="lp-center">🤔 大模型正在结合评委建议选「✨ 推荐」，约需 10~20 秒…</div>';
+      panel.innerHTML = '<div class="lp-head"><span class="lp-kicker">落地问诊</span><h4>正在请大模型为你的想法定制问题…</h4></div>' +
+        '<div class="lp-center">🤔 大模型正在结合评委建议出题并选「✨ 推荐」，约需 15~30 秒…</div>';
       return;
     }
     var w = weakestDim();
     var ideaCount = 0, landCount = 0;
     landing.qs.forEach(function(x){ if (x.phase === "idea") ideaCount++; else landCount++; });
     var recNote = (loadConfig() && loadConfig().apiKey)
-      ? ' <b>每问都会标注 ✨ 大模型推荐选项</b>（也可以不跟）。'
-      : '';
+      ? ' <b>5 个创意优化问题由大模型针对你的想法量身定制</b>（每个想法问得都不一样），每问标注 ✨ 推荐选项（也可以不跟）。'
+      : ' 未配置 API 时使用预设题库（配置后即由大模型针对想法定制问题）。';
     panel.innerHTML =
       '<div class="lp-head"><span class="lp-kicker">落地问诊</span><h4>先打磨创意，再定方向</h4></div>' +
       '<div class="lp-summary"><p><b>五位评委的共识：</b>你的「<span class="hl">' + w.name + '</span>」维度最弱（' + w.score + '/100）。' +
       escHtml(state.advice[0] || "建议先聚焦一个核心场景，砍掉多余功能") + '</p></div>' +
-      '<p class="lp-tip">问诊分两步：先 <b>' + ideaCount + '</b> 轮<b>创意优化</b>把点子本身打磨到位（爽点 / 痛点 / 取舍 / 记忆点 / 反差），再 <b>' + landCount + '</b> 轮<b>落地决策</b>把「给谁用、在哪用」定下来。' + recNote + '选完就生成对应版本的落地提示词。</p>' +
+      '<p class="lp-tip">问诊分两步：先 <b>' + ideaCount + '</b> 轮<b>创意优化</b>把点子本身打磨到位，再 <b>' + landCount + '</b> 轮<b>落地决策</b>把「给谁用、在哪用」定下来。' + recNote + '选完就生成对应版本的落地提示词。</p>' +
       '<button class="btn btn-primary" id="lpStart" type="button">开始问诊 →</button>';
   }
   function renderLandingStep(i){
     var panel = $("landingPanel");
     var q = landing.qs[i];
-    var phaseName = q.phase === "idea" ? "创意优化" : "落地优化";
+    var phaseName = q.phase === "idea" ? "创意优化" : "落地决策";
     var phaseIdx = 0;
     for (var m = 0; m < i; m++){ if (landing.qs[m].phase === q.phase) phaseIdx++; }
     var phaseTotal = 0;
@@ -2535,14 +2537,29 @@
   function startLandingWizard(){
     landing.answers = [];
     landing.step = -1;
-    landing.qs = buildWizardQuestions();
+    landing.qs = buildWizardQuestions(); // 预设题库兜底（演示模式 / LLM 失败时用）
     landing.recs = null;
     var cfg = loadConfig();
     if (cfg && cfg.apiKey){
       renderLandingIntro(true);
-      callChat(null, buildRecsPromptApi(), 800, 60000).then(function(json){
-        landing.recs = (json && Array.isArray(json.recs) && json.recs.length >= landing.qs.length)
-          ? json.recs.slice(0, landing.qs.length) : null;
+      callChat(null, buildWizardPromptApi(), 1400, 90000).then(function(json){
+        var qs = json && Array.isArray(json.questions) ? json.questions : null;
+        if (qs && qs.length >= 5){
+          var recs = [];
+          landing.qs = qs.slice(0, 7).map(function(q, i){
+            var opts = (Array.isArray(q.options) && q.options.length >= 2) ? q.options.slice(0, 4) : ["是", "否", "看情况", "再说"];
+            var rec = (q.rec != null && q.rec >= 0 && q.rec < opts.length) ? q.rec : -1;
+            recs.push(rec);
+            return {
+              phase: i < 5 ? "idea" : "landing",
+              key: q.key || ("q" + (i + 1)),
+              label: q.label || ("第" + (i + 1) + "问"),
+              q: q.q || "这个问题怎么回答？",
+              options: opts
+            };
+          });
+          landing.recs = recs;
+        }
         renderLandingIntro(false);
       }).catch(function(){
         renderLandingIntro(false);
