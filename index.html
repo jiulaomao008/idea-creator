@@ -1148,43 +1148,69 @@
     if (!cfg || !cfg.apiKey) throw new Error("未配置 API");
     var base = String(cfg.baseUrl || "").replace(/\/+$/, "");
     if (!base) throw new Error("API 地址为空");
-    var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
-    var timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, timeoutMs || 90000) : null;
-    try {
-      var res = await fetch(base + "/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type":"application/json", "Authorization":"Bearer " + cfg.apiKey },
-        body: JSON.stringify({
-          model: cfg.model || "deepseek-v4-flash",
-          messages: [
-            { role:"system", content: systemMsg || "你是一个严格的 JSON 输出引擎，只输出合法 JSON。" },
-            { role:"user", content: userMsg }
-          ],
-          temperature: 0.95,
-          max_tokens: maxTokens || 1600,
-          stream: false
-        }),
-        signal: ctrl ? ctrl.signal : undefined
-      });
-      if (!res.ok){
-        var msg = "";
-        try{ msg = (await res.text()).slice(0, 140); }catch(e){}
-        throw new Error("HTTP " + res.status + (msg ? " · " + msg : ""));
+    var budget = timeoutMs || 90000;
+    var lastErr = null;
+    // 5xx/429/网络错误自动重试（最多 3 次，间隔递增）
+    for (var attempt = 0; attempt < 3; attempt++){
+      if (attempt > 0) await new Promise(function(r){ setTimeout(r, 1200 * attempt); });
+      var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+      var timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, budget) : null;
+      try {
+        var res = await fetch(base + "/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type":"application/json", "Authorization":"Bearer " + cfg.apiKey },
+          body: JSON.stringify({
+            model: cfg.model || "deepseek-v4-flash",
+            messages: [
+              { role:"system", content: systemMsg || "你是一个严格的 JSON 输出引擎，只输出合法 JSON。" },
+              { role:"user", content: userMsg }
+            ],
+            temperature: 0.95,
+            max_tokens: maxTokens || 2000,
+            stream: false
+          }),
+          signal: ctrl ? ctrl.signal : undefined
+        });
+        if (res.status === 429 || (res.status >= 500 && res.status <= 599)){
+          var b5 = "";
+          try{ b5 = (await res.text()).slice(0, 120); }catch(e){}
+          lastErr = new Error("HTTP " + res.status + (b5 ? " · " + b5 : ""));
+          continue; // 服务端过载/限流，重试
+        }
+        if (!res.ok){
+          var msg = "";
+          try{ msg = (await res.text()).slice(0, 140); }catch(e){}
+          throw new Error("HTTP " + res.status + (msg ? " · " + msg : ""));
+        }
+        var data = await res.json();
+        var m0 = data && data.choices && data.choices[0] && data.choices[0].message;
+        var content = m0 && (m0.content || m0.reasoning_content || "");
+        if (!content){
+          // 思考模式可能把 token 全用在思考上、或服务端 beta 返回空
+          throw new Error("模型未返回内容（可能思考占满额度或服务端过载）");
+        }
+        return parseJsonContent(content);
+      } catch (e) {
+        if (timer) clearTimeout(timer);
+        if (ctrl && ctrl.signal.aborted){
+          lastErr = new Error("请求超时（" + Math.round(budget / 1000) + " 秒），请检查网络或接口");
+          continue;
+        }
+        var em = String((e && e.message) || "");
+        if (/429|5\d\d|fetch failed|networkerror|load failed|timeout|超时/i.test(em)){
+          lastErr = e;
+          continue; // 可恢复错误，重试
+        }
+        throw e;
+      } finally {
+        if (timer) clearTimeout(timer);
       }
-      var data = await res.json();
-      var content = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-      if (!content) throw new Error("模型未返回内容");
-      return parseJsonContent(content);
-    } catch (e) {
-      if (ctrl && ctrl.signal.aborted) throw new Error("请求超时（" + Math.round((timeoutMs || 90000) / 1000) + " 秒），请检查网络或接口");
-      throw e;
-    } finally {
-      if (timer) clearTimeout(timer);
     }
+    throw lastErr || new Error("请求失败，请稍后再试");
   }
 
   async function callLLM(idea, heatKey){
-    return callChat(null, buildApiPrompt(idea, heatKey), 1600, 90000);
+    return callChat(null, buildApiPrompt(idea, heatKey), 2000, 90000);
   }
 
   /* 把 API 报错翻译成友好中文提示 */
@@ -1196,7 +1222,9 @@
     if (/403/.test(low)) return "403：接口拒绝了请求（该服务可能限制浏览器直连）";
     if (/404/.test(low)) return "404：API 地址填错了，Base URL 应填到版本号（如 https://api.deepseek.com/v1），不要带 /chat/completions";
     if (/400|model not exist|model.*not.*found|not support/.test(low)) return "400：模型名不存在或不受支持，请检查模型名称（DeepSeek 可用 deepseek-v4-flash / deepseek-v4-pro）";
-    if (/429/.test(low)) return "429：请求太频繁，请稍后再试";
+    if (/429/.test(low)) return "429：请求太频繁（接口限流），已自动重试仍失败，请稍后再试";
+    if (/50[0-9]|503|service unavailable|overloaded|busy|5\d\d/.test(low)) return "5xx：接口繁忙（服务端过载/波动），已自动重试仍失败，请稍后再试或换模型（如 deepseek-v4-pro）";
+    if (/模型未返回内容/.test(low)) return "模型返回为空：可能是思考模式占满额度或服务端过载，已自动重试仍失败，请稍后再试或换模型";
     if (/failed to fetch|networkerror|load failed|cors|typeerror/.test(low)) return "网络/跨域问题：请求没能到达接口，请检查 API 地址和网络";
     if (/timeout|timed out|超时|abort/.test(low)) return "连接超时，请检查网络（接口响应过慢）";
     return "调用失败：" + msg.slice(0, 80);
@@ -1211,7 +1239,7 @@
       var res = await fetch(base + "/chat/completions", {
         method: "POST",
         headers: { "Content-Type":"application/json", "Authorization":"Bearer " + cfg.apiKey },
-        body: JSON.stringify({ model: cfg.model, messages:[{ role:"user", content:"ping，只回复 pong" }], max_tokens: 8, stream:false }),
+        body: JSON.stringify({ model: cfg.model, messages:[{ role:"user", content:"ping，只回复 pong" }], max_tokens: 64, stream:false }),
         signal: ctrl ? ctrl.signal : undefined
       });
       if (!res.ok){
@@ -1221,7 +1249,9 @@
       }
       var d = await res.json();
       if (!d.choices || !d.choices[0] || !d.choices[0].message) throw new Error("接口返回格式异常");
-      return d.choices[0].message;
+      var m0 = d.choices[0].message;
+      if (!(m0.content || m0.reasoning_content)) throw new Error("接口返回为空（可能服务端过载），请稍后再试");
+      return m0;
     } catch (e) {
       if (ctrl && ctrl.signal.aborted) throw new Error("请求超时（20 秒），请检查网络或接口");
       throw e;
