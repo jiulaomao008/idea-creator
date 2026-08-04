@@ -545,14 +545,22 @@
   .landing-panel{ margin-top:14px; border:var(--ink-w) solid var(--ink); border-radius:var(--seed-radius);
     background:var(--accent-soft); padding:18px 18px 16px; }
   .landing-panel[hidden]{ display:none; }
-  .lp-head{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+  .lp-head{ display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; column-gap:10px; row-gap:6px; margin-bottom:10px; }
   .lp-kicker{ font-family:var(--font-display); font-size:.78rem; color:var(--primary); background:var(--card);
-    border:2px solid var(--ink); padding:2px 10px; border-radius:999px; }
-  .lp-head h4{ font-size:1.1rem; margin:0; flex:1; }
-  .lp-x{ flex:none; width:28px; height:28px; border-radius:50%; border:2px solid var(--ink);
+    border:2px solid var(--ink); padding:2px 10px; border-radius:999px; grid-column:1; grid-row:1; }
+  .lp-dots{ display:flex; gap:6px; grid-column:2; grid-row:1; justify-self:end; }
+  .lp-head h4{ font-size:1.1rem; margin:0; grid-column:1 / -1; grid-row:2; min-width:0; word-break:break-word; }
+  .lp-x{ grid-column:3; grid-row:1; flex:none; width:28px; height:28px; border-radius:50%; border:2px solid var(--ink);
     background:var(--card); color:var(--ink); font-size:.82rem; cursor:pointer; line-height:1; }
   .lp-x:hover{ transform:translateY(-1px); }
-  .lp-dots{ display:flex; gap:6px; margin-left:auto; }
+  /* 桌面端：标题与徽标同行、dots / ✕ 在右 */
+  @media (min-width: 640px){
+    .lp-head{ grid-template-columns:auto minmax(0,1fr) auto auto; column-gap:10px; }
+    .lp-kicker{ grid-column:1; grid-row:1; }
+    .lp-head h4{ grid-column:2; grid-row:1; }
+    .lp-x{ grid-column:3; grid-row:1; }
+    .lp-dots{ grid-column:4; grid-row:1; justify-self:end; }
+  }
   .lp-dot{ width:10px; height:10px; border-radius:50%; border:2px solid var(--ink); background:var(--card); }
   .lp-dot.on{ background:var(--primary); }
   .lp-dot.done{ background:var(--accent); }
@@ -600,12 +608,25 @@
     .bubble::before{ display:none; }
     .idea-foot{ flex-direction:column; align-items:stretch; }
     .btn{ width:100%; justify-content:center; }
-    .nav{ gap:10px; flex-wrap:wrap; justify-content:flex-end; }
-    .nav a{ font-size:.92rem; }
-    .nav-hbtn, .mode-pill{ font-size:.8rem; padding:5px 10px; }
+    /* 顶部导航两行：第1行 logo + 模式 pill，第2行链接 + 小按钮 */
+    .topbar-inner{ flex-wrap:wrap; gap:8px 12px; padding:10px 0; }
+    .logo{ font-size:1.05rem; flex:none; white-space:nowrap; }
+    .logo svg{ width:28px; height:28px; }
+    .nav{ order:3; width:100%; gap:8px 14px; flex-wrap:wrap; justify-content:flex-start; }
+    .nav a{ font-size:.85rem; padding:2px 0; }
+    .nav-hbtn, .mode-pill{ font-size:.76rem; padding:4px 10px; }
+    .mode-pill{ order:2; margin-left:auto; }
+    .mode-pill svg{ width:11px; height:11px; }
     .report{ padding:30px 18px; }
     .report-inner{ padding:26px 16px; }
     .grill-status{ min-width:auto; font-size:.85rem; }
+    /* 烤串档案：竖向堆叠，避免文字被挤成竖排 */
+    .history-item{ flex-direction:column; align-items:stretch; gap:10px; padding:12px 14px; }
+    .history-item .h-score{ width:46px; height:46px; font-size:.95rem; align-self:flex-start; }
+    .history-item .h-main{ width:100%; }
+    .history-item .h-idea{ font-size:.92rem; white-space:normal; word-break:break-word; }
+    .history-item .h-meta{ font-size:.76rem; }
+    .history-item .h-actions{ justify-content:flex-end; }
   }
 
   @media (prefers-reduced-motion: reduce){
@@ -1141,7 +1162,16 @@
     var text = String(content).trim();
     var start = text.indexOf("{"), end = text.lastIndexOf("}");
     if (start >= 0 && end > start){ text = text.slice(start, end + 1); }
-    var obj = JSON.parse(text);
+    var obj;
+    try {
+      obj = JSON.parse(text);
+    } catch (e) {
+      // 容错：先修掉常见问题（对象/数组末尾多余逗号），再解析
+      try { obj = JSON.parse(text.replace(/,\s*([}\]])/g, "$1")); }
+      catch (e2) {
+        throw new Error("AI 返回的 JSON 不完整或格式错误（可能被输出截断）");
+      }
+    }
     if (!obj || typeof obj !== "object") throw new Error("返回内容不是合法 JSON");
     return obj;
   }
@@ -1187,10 +1217,14 @@
         }
         var data = await res.json();
         var m0 = data && data.choices && data.choices[0] && data.choices[0].message;
-        var content = m0 && (m0.content || m0.reasoning_content || "");
+        var content = m0 && m0.content ? String(m0.content) : "";
         if (!content){
-          // 思考模式可能把 token 全用在思考上、或服务端 beta 返回空
-          throw new Error("模型未返回内容（可能思考占满额度或服务端过载）");
+          // content 为空时，尝试思考内容（须含 JSON 特征）
+          var rc = m0 && m0.reasoning_content ? String(m0.reasoning_content) : "";
+          if (rc && rc.indexOf("{") !== -1){
+            try { return parseJsonContent(rc); } catch(e){}
+          }
+          throw new Error("模型未返回内容（可能思考模式占满额度或服务端过载）");
         }
         return parseJsonContent(content);
       } catch (e) {
@@ -1228,6 +1262,7 @@
     if (/429/.test(low)) return "429：请求太频繁（接口限流），已自动重试仍失败，请稍后再试";
     if (/50[0-9]|503|service unavailable|overloaded|busy|5\d\d/.test(low)) return "5xx：接口繁忙（服务端过载/波动），已自动重试仍失败，请稍后再试或换模型（如 deepseek-v4-pro）";
     if (/模型未返回内容/.test(low)) return "模型返回为空：可能是思考模式占满额度或服务端过载，已自动重试仍失败，请稍后再试或换模型";
+    if (/json 不完整|json 格式错误|json.*截断|截断/.test(low)) return "模型输出被截断或格式错误（常见于输出超长），已自动重试仍失败，请换 deepseek-v4-pro 或稍后重试";
     if (/failed to fetch|networkerror|load failed|cors|typeerror/.test(low)) return "网络/跨域问题：请求没能到达接口，请检查 API 地址和网络";
     if (/timeout|timed out|超时|abort/.test(low)) return "连接超时，请检查网络（接口响应过慢）";
     return "调用失败：" + msg.slice(0, 80);
@@ -2479,8 +2514,9 @@
       "请为这个想法量身设计一份「落地问诊」问卷，共 7 个问题：\n" +
       "【前 5 个是创意优化问题】必须针对这个想法本身提出，从 5 个互不重复的角度推动 idea 优化（例如：目标人群适配、核心价值主张、最该砍掉的冗余、差异化亮点、传播记忆点等，可根据想法特点自选更贴切的角度）；问题要引用想法里的具体内容、直指它的薄弱处，绝不能是套在任何想法上都能用的通用问题，必须起到优化这个 idea 的作用。\n" +
       "【后 2 个是落地决策问题】围绕把想法落成产品最关键的两件事（如目标用户、核心使用场景）提出。\n\n" +
-      "每个问题给 4 个具体、口语化、可执行的选项，并用 rec 给出你认为最合适的选项下标（0-3）。\n\n" +
-      '严格只输出 JSON：{"questions":[{"key":"q1","label":"角度名","q":"问题","options":["选项1","选项2","选项3","选项4"],"rec":0}...共7个]}';
+      "输出要求：每个问题 ≤20 字，每个选项 ≤12 字、口语化、可执行；用 rec 给出你认为最合适的选项下标（0-3）。字符串内不要使用英文双引号。\n\n" +
+      "直接输出 JSON，不要 Markdown 代码块，不要任何解释：\n" +
+      '{"questions":[{"key":"q1","label":"角度名","q":"问题","options":["选项1","选项2","选项3","选项4"],"rec":0}...共7个]}';
   }
   function buildLandingPrompt(idea, answers){
     var kws = extractKeywords(idea);
@@ -2631,7 +2667,7 @@
     };
     if (!api){ renderLandingIntro(false); applyRecs(); return; }
     renderLandingIntro(true);
-    callChat(null, buildWizardPromptApi(), 1400, 90000).then(function(json){
+    callChat(null, buildWizardPromptApi(), 3000, 90000).then(function(json){
       var qs = json && Array.isArray(json.questions) ? json.questions : null;
       if (qs && qs.length >= 5){
         var recs = [];
@@ -2651,13 +2687,13 @@
         renderLandingIntro(false);
       } else {
         landing.qs = buildWizardQuestions();
-        toast("大模型出题失败，先用预设题库（正在补选推荐选项）", "warn");
+        toast("大模型出题返回不完整，先用预设题库（正在补选推荐选项）", "warn");
         renderLandingIntro(false);
         applyRecs();
       }
-    }).catch(function(){
+    }).catch(function(err){
       landing.qs = buildWizardQuestions();
-      toast("大模型出题失败，先用预设题库（正在补选推荐选项）", "warn");
+      toast("大模型出题失败：" + friendlyApiError(err) + "，先用预设题库", "warn");
       renderLandingIntro(false);
       applyRecs();
     });
