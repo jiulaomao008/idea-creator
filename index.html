@@ -2791,14 +2791,14 @@
     g.fillStyle = "rgba(36,26,16,.6)";
     g.fillText("编号 BBQ-" + state.serial + " · " + todayStr(), W / 2, 188);
 
-    /* 受烤想法块：右侧预留印章位，文字不延伸到印章区 */
+    /* 受烤想法块：3 行内显示，超长自动截断省略，右侧预留印章位 */
     g.fillStyle = "#FFFDF7";
     g.strokeStyle = "#241A10"; g.lineWidth = 6;
-    roundRect(g, 90, 228, 900, 162, 24); g.fill(); g.stroke();
+    roundRect(g, 90, 225, 900, 190, 24); g.fill(); g.stroke();
     g.fillStyle = "#241A10";
-    g.font = "700 38px 'Noto Sans SC',sans-serif";
+    g.font = "700 34px 'Noto Sans SC',sans-serif";
     g.textAlign = "left";
-    wrapText(g, "受烤想法：" + state.idea, 130, 300, 640, 48, 38);
+    wrapText(g, "受烤想法：" + state.idea, 130, 292, 640, 44, 34, 3);
     g.textAlign = "center";
 
     /* 评级印章：右上角独立区，不与想法文字重叠 */
@@ -2808,8 +2808,15 @@
     g.strokeStyle = "#E23D3D"; g.lineWidth = 8;
     g.beginPath(); g.arc(0, 0, 100, 0, Math.PI * 2); g.stroke();
     g.fillStyle = "#E23D3D";
-    g.font = "400 38px 'ZCOOL KuaiLe',sans-serif";
-    g.fillText(state.tier.name, 0, 14);
+    /* 评级名按长度自适应字号：字再多也不超出章圆框（直径 200，保留 22% 富余） */
+    var tierName = state.tier.name || "";
+    var tf = 38;
+    g.font = "400 " + tf + "px 'ZCOOL KuaiLe',sans-serif";
+    while (tf > 18 && g.measureText(tierName).width > 156){
+      tf -= 2;
+      g.font = "400 " + tf + "px 'ZCOOL KuaiLe',sans-serif";
+    }
+    g.fillText(tierName, 0, 14);
     g.restore();
 
     /* 综合存活分 */
@@ -2860,13 +2867,13 @@
     g.textAlign = "center";
 
     g.fillStyle = "rgba(255,201,60,.35)";
-    roundRect(g, 90, 1150, W - 180, 160, 22); g.fill();
+    roundRect(g, 90, 1150, W - 180, 170, 22); g.fill();
     g.strokeStyle = "#241A10"; g.lineWidth = 6;
-    roundRect(g, 90, 1150, W - 180, 160, 22); g.stroke();
+    roundRect(g, 90, 1150, W - 180, 170, 22); g.stroke();
     g.fillStyle = "#241A10";
     g.font = "400 33px 'Noto Sans SC',sans-serif";
     g.textAlign = "left";
-    wrapText(g, "主厨判词：" + (state.verdict || state.tier.verdict), 130, 1208, W - 260, 41, 33);
+    wrapText(g, "主厨判词：" + (state.verdict || state.tier.verdict), 130, 1208, W - 260, 41, 33, 3);
     g.textAlign = "center";
 
     g.fillStyle = "rgba(36,26,16,.55)";
@@ -2897,16 +2904,24 @@
     g.arcTo(x, y, x + w, y, r);
     g.closePath();
   }
-  function wrapText(g, text, x, y, maxW, lineH, fontSize){
+  function wrapText(g, text, x, y, maxW, lineH, fontSize, maxLines){
     var chars = String(text).split("");
-    var line = "", yy = y;
-    chars.forEach(function(ch){
-      var test = line + ch;
+    var line = "", yy = y, lineNo = 0;
+    for (var i = 0; i < chars.length; i++){
+      var test = line + chars[i];
       if (g.measureText(test).width > maxW && line){
+        if (maxLines && lineNo >= maxLines - 1){
+          // 已到最大行数：此行超宽则截断加省略号，保证不溢出
+          var cur = line;
+          while (cur.length > 1 && g.measureText(cur + "…").width > maxW) cur = cur.slice(0, -1);
+          g.fillText(cur + "…", x, yy);
+          return;
+        }
         g.fillText(line, x, yy);
-        line = ch; yy += lineH;
+        lineNo++;
+        line = chars[i]; yy += lineH;
       } else { line = test; }
-    });
+    }
     if (line) g.fillText(line, x, yy);
   }
 
