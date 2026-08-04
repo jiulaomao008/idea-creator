@@ -1976,6 +1976,9 @@
     state.idea = rec.idea; state.mode = rec.mode || "demo";
     state.score = rec.score;
     state.v2From = null;
+    /* 从档案回看：重置落地问诊，下次点开按该想法重新出题 */
+    $("landingPanel").hidden = true;
+    landing.qs = []; landing.answers = []; landing.recs = null; landing.step = -1;
     state.tier = { name: rec.tierName || "未评级", verdict: rec.verdict || "" };
     state.dims = Array.isArray(rec.dims) ? rec.dims.slice() : DIMS.map(function(){ return 50; });
     state.advice = Array.isArray(rec.advice) ? rec.advice.slice() : [];
@@ -2594,39 +2597,70 @@
         '<button class="btn btn-ghost" id="lpClose" type="button">收起</button>' +
       '</div>';
   }
+  /* 预设题库兜底时，再单独让 LLM 为每问选推荐选项 */
+  function buildRecsPromptApi(){
+    var lines = [
+      "你是产品创意顾问。用户的想法：" + state.idea + "。",
+      "五位评委的改进建议：" + state.advice.map(function(a, i){ return (i+1) + ". " + a; }).join(" "),
+      "下面是落地问诊的 " + landing.qs.length + " 个问题。请综合想法特点与评委建议，为每个问题推荐 1 个最合适的选项（返回该选项的下标 0-3）：",
+      ""
+    ];
+    landing.qs.forEach(function(q, i){
+      lines.push((i+1) + ". " + q.label + "：" + q.q);
+      q.options.forEach(function(o, j){ lines.push("   " + j + ") " + o); });
+    });
+    lines.push("", '严格只输出 JSON：{"recs":[...]}（共 ' + landing.qs.length + ' 个下标，与问题顺序一一对应）');
+    return lines.join("\n");
+  }
   function startLandingWizard(){
     landing.answers = [];
     landing.step = -1;
     landing.qs = buildWizardQuestions(); // 预设题库兜底（演示模式 / LLM 失败时用）
     landing.recs = null;
     var cfg = loadConfig();
-    if (cfg && cfg.apiKey){
-      renderLandingIntro(true);
-      callChat(null, buildWizardPromptApi(), 1400, 90000).then(function(json){
-        var qs = json && Array.isArray(json.questions) ? json.questions : null;
-        if (qs && qs.length >= 5){
-          var recs = [];
-          landing.qs = qs.slice(0, 7).map(function(q, i){
-            var opts = (Array.isArray(q.options) && q.options.length >= 2) ? q.options.slice(0, 4) : ["是", "否", "看情况", "再说"];
-            var rec = (q.rec != null && q.rec >= 0 && q.rec < opts.length) ? q.rec : -1;
-            recs.push(rec);
-            return {
-              phase: i < 5 ? "idea" : "landing",
-              key: q.key || ("q" + (i + 1)),
-              label: q.label || ("第" + (i + 1) + "问"),
-              q: q.q || "这个问题怎么回答？",
-              options: opts
-            };
-          });
-          landing.recs = recs;
+    var api = !!(cfg && cfg.apiKey);
+    var applyRecs = function(){
+      // 兜底题库也能拿到 LLM 推荐：单独请求一次推荐下标
+      if (!api || landing.recs) return;
+      callChat(null, buildRecsPromptApi(), 800, 60000).then(function(json){
+        if (json && Array.isArray(json.recs) && json.recs.length >= landing.qs.length){
+          landing.recs = json.recs.slice(0, landing.qs.length);
+          if (landing.step >= 0 && landing.qs[landing.step]) renderLandingStep(landing.step);
         }
+      }).catch(function(){});
+    };
+    if (!api){ renderLandingIntro(false); applyRecs(); return; }
+    renderLandingIntro(true);
+    callChat(null, buildWizardPromptApi(), 1400, 90000).then(function(json){
+      var qs = json && Array.isArray(json.questions) ? json.questions : null;
+      if (qs && qs.length >= 5){
+        var recs = [];
+        landing.qs = qs.slice(0, 7).map(function(q, i){
+          var opts = (Array.isArray(q.options) && q.options.length >= 2) ? q.options.slice(0, 4) : ["是", "否", "看情况", "再说"];
+          var rec = (q.rec != null && q.rec >= 0 && q.rec < opts.length) ? q.rec : -1;
+          recs.push(rec);
+          return {
+            phase: i < 5 ? "idea" : "landing",
+            key: q.key || ("q" + (i + 1)),
+            label: q.label || ("第" + (i + 1) + "问"),
+            q: q.q || "这个问题怎么回答？",
+            options: opts
+          };
+        });
+        landing.recs = recs;
         renderLandingIntro(false);
-      }).catch(function(){
+      } else {
+        landing.qs = buildWizardQuestions();
+        toast("大模型出题失败，先用预设题库（正在补选推荐选项）", "warn");
         renderLandingIntro(false);
-      });
-    } else {
+        applyRecs();
+      }
+    }).catch(function(){
+      landing.qs = buildWizardQuestions();
+      toast("大模型出题失败，先用预设题库（正在补选推荐选项）", "warn");
       renderLandingIntro(false);
-    }
+      applyRecs();
+    });
   }
   function generateLanding(){
     var panel = $("landingPanel");
@@ -2651,9 +2685,7 @@
     var panel = $("landingPanel");
     panel.hidden = false;
     landing.open = true;
-    if (landing.qs.length === 0) startLandingWizard();
-    else if (landing.step >= 0) renderLandingStep(landing.step);
-    else renderLandingIntro(false);
+    startLandingWizard(); // 每次点开都按当前 idea 从头出题（LLM 定制 + 推荐选项）
     panel.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block:"nearest" });
   }
   $("landingBtn").addEventListener("click", openLanding);
